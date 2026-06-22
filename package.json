@@ -6,7 +6,7 @@
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^22.15.17",
     "builtin-modules": "^5.0.0",
     "esbuild": "^0.25.0",
     "esbuild-svelte": "^0.9.3",
