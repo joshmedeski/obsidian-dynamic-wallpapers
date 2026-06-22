@@ -18,13 +18,13 @@ npm install
 
 ## 2. Create the plugin folder in your vault
 
-Inside your Obsidian vault, create the folder where the plugin will live:
+Inside your Obsidian vault, create a folder for the plugin under `.obsidian/plugins/`. Obsidian loads whatever folder contains a valid `manifest.json`, so the name you pick is up to you; this guide uses `dynamic-wallpaper-plugin` (the plugin id) for consistency:
 
 ```bash
-mkdir -p "<path-to-your-vault>/.obsidian/plugins/obsidian-dynamic-wallpaper"
+mkdir -p "<path-to-your-vault>/.obsidian/plugins/dynamic-wallpaper-plugin"
 ```
 
-Replace `<path-to-your-vault>` with the absolute path to your vault (for example, `~/Documents/MyVault`).
+Replace `<path-to-your-vault>` with the absolute path to your vault (for example, `~/Documents/MyVault`). If you already have a plugin folder under a different name (e.g. `obsidian-dynamic-wallpaper`) with a working symlink, just reuse it.
 
 ## 3. Remove the existing `build` directory
 
@@ -41,14 +41,14 @@ If you cloned fresh, this folder may not exist yet, in which case the `rm` is a 
 Link the project's `build/` directory to your vault's plugin folder so every rebuild is picked up by Obsidian:
 
 ```bash
-ln -s "$(pwd)/build" "<path-to-your-vault>/.obsidian/plugins/obsidian-dynamic-wallpaper"
+ln -s "$(pwd)/build" "<path-to-your-vault>/.obsidian/plugins/dynamic-wallpaper-plugin"
 ```
 
 Verify the symlink points the right way:
 
 ```bash
 ls -la build
-# build -> /path/to/your/vault/.obsidian/plugins/obsidian-dynamic-wallpaper
+# build -> /path/to/your/vault/.obsidian/plugins/dynamic-wallpaper-plugin
 ```
 
 > ⚠️ If you ever accidentally create the vault folder as a real directory, Obsidian will load it instead of the symlink target. If wallpapers stop loading after pulling changes, double-check that the symlink in step 4 still resolves to your vault and that you haven't overwritten it with a real folder.
@@ -85,14 +85,14 @@ This first type-checks the TypeScript sources, then bundles a minified `main.js`
 
 1. Open your vault in Obsidian.
 2. Go to Settings → Community Plugins.
-3. Make sure Restricted Mode is off, then enable **Obsidian Dynamic Wallpaper** (it should appear in the list because of the symlink).
+3. Make sure Restricted Mode is off, then enable **Dynamic Wallpaper** (it should appear in the list because of the symlink).
 4. Edit a note to add a `wallpaper` frontmatter property, or open the Wallpaper Picker from the command palette.
 
 If anything looks wrong, check the developer console (`Ctrl/Cmd + Shift + I`) for errors.
 
 ## Troubleshooting
 
-- **Plugin doesn't appear in the Community Plugins list** — confirm the symlink resolves correctly and that `build/manifest.json` exists. Run `cat <path-to-your-vault>/.obsidian/plugins/obsidian-dynamic-wallpaper/manifest.json` to verify.
+- **Plugin doesn't appear in the Community Plugins list** — confirm the symlink resolves correctly and that `build/manifest.json` exists. Run `cat <path-to-your-vault>/.obsidian/plugins/dynamic-wallpaper-plugin/manifest.json` to verify.
 - **Build errors after pulling new changes** — delete `node_modules` and run `npm install` again, then `npm run build` once to refresh `build/`.
 - **Hot-Reload isn't reloading** — make sure Hot-Reload itself is enabled, and that the plugin you are editing is enabled in Community Plugins. Some structural changes (e.g. adding/removing commands) still require a full reload.
 
