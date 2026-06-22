@@ -89,3 +89,7 @@ This plugin accesses the filesystem and optionally runs an external tool beyond 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for how to set up a local dev environment, including symlinking the `build/` output into your vault and using the [Hot-Reload](https://github.com/pjeby/hot-reload) plugin for fast iteration.
 
 See [`AGENTS.md`](./AGENTS.md) for project conventions and style guidelines.
+
+## Development
+
+Every pull request runs `npm run check` (svelte-check + tsc) and `npm run build` (full bundle) via GitHub Actions. See `.github/workflows/ci.yml`.
