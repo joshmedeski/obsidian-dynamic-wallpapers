@@ -59,7 +59,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
   settings: PluginSettings = DEFAULT_SETTINGS;
   private opacityNoticeTimeout: NodeJS.Timeout | null = null;
   private currentWallpaper: TFile | null = null;
-  private wallpaperCache: WallpaperCache;
+  private wallpaperCache!: WallpaperCache;
   private syncDebounceTimer: NodeJS.Timeout | null = null;
 
   async onload() {
