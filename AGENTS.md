@@ -47,6 +47,19 @@ A `version-bump.mjs` helper script is included; read it before relying on it (it
 
 `esbuild.config.mjs` has a hard-coded `external` array containing `obsidian`, `electron`, every `@codemirror/*` and `@lezer/*` package, plus all Node built-ins (from `builtin-modules`). Any new Obsidian API import or CodeMirror extension **must** be added to this list — do not let esbuild bundle them, or you'll get duplicate-copy / version-mismatch errors at runtime in Obsidian.
 
+## Continuous Integration
+
+- `.github/workflows/ci.yml` runs on every PR and push to `main`:
+  1. `npm ci`
+  2. `npm run check` (svelte-check + tsc)
+  3. `npm run build`
+  4. Asserts the three release artifacts exist (`manifest.json`, `main.js`, `styles.css`).
+  5. Uploads those three files as a `plugin-bundle` artifact on `main` (for manual smoke-testing).
+- `.github/dependabot.yml` opens weekly grouped PRs for dev-dependency bumps.
+- `.github/pull_request_template.md` is the default PR body — keep the checklist accurate before requesting review.
+
+Before opening a PR, run `npm run check` and `npm run build` locally. CI is the same chain — a green local build means a green PR.
+
 ## Conventions
 
 - Use `svelte/store` for state management (`writable`).

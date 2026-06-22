@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+    commit-message:
+      prefix: "deps"
+    # This project pins versions directly in package.json with caret ranges.
+    # Allow patch and minor; major bumps still create PRs but get labeled.
+    open-pull-requests-limit: 10
