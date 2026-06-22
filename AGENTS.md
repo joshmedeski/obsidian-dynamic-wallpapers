@@ -86,6 +86,35 @@ Tag names containing `-` (e.g. `v1.2.0-beta.1`) are marked as pre-releases. Plai
 
 The workflow cannot be triggered manually from the Actions tab — it only fires on `v*` tag pushes. This is intentional: it keeps the "release" label meaningful and avoids accidental publishes.
 
+### Driving releases from inside pi
+
+The pi agent ships with `release_builder_*` tools that compose with this workflow as a **pre-flight preview**:
+
+1. **`release_builder_start`** — infer (or set) the next version. Inspects recent commits since the last tag and recent semver tags to suggest the next bump. Catches mistakes like tagging `v1.0.0` when `1.0.1` was intended.
+2. **`release_builder_list_related_prs`** — see which PRs would appear in the GitHub-generated changelog before tagging.
+3. **`release_builder_generate_notes`** — re-fetch the GitHub auto-generated notes for the working version (useful if commits landed after the initial preview).
+4. **`release_builder_update_draft`** — edit the previewed markdown locally (e.g. add a curated preamble).
+5. **`release_builder_submit`** — create the draft on GitHub without a tag. From there you can preview the rendered release page in the GitHub UI, then publish.
+
+This complements (does not replace) the tag-push workflow above. The typical sequence:
+
+```bash
+# Inside pi:
+# Ask: "preview the next release"
+# → release_builder_start infers 1.0.1, previews notes
+# → release_builder_list_related_prs shows what's included
+# → if anything looks off, edit commit messages or PR titles before tagging
+# → release_builder_submit (mode=draft) creates an untagged draft on GitHub
+
+# Back at the terminal:
+# Bump public/manifest.json and versions.json
+git commit -am "chore: bump version to 1.0.1"
+git tag v1.0.1
+git push origin v1.0.1     # → release.yml publishes the real release
+```
+
+The pi-side preview lets you catch changelog issues **before** the public release goes out.
+
 ## Conventions
 
 - Use `svelte/store` for state management (`writable`).
