@@ -1,0 +1,97 @@
+body {
+  --background-overlay-opacity-light: 0.8;
+  --background-overlay-opacity-dark: 0.8;
+
+  --callout-padding: 1.5rem 2rem;
+  --modal-background: var(--overlay-background);
+  --prompt-background: var(--overlay-background);
+
+  --background-primary: transparent;
+  --background-primary-position: center top;
+  --background-primary-repeat: no-repeat;
+  --background-primary-size: cover;
+
+  --background-secondary: transparent;
+  --menu-background: var(--overlay-background);
+  --background-secondary-alt: transparent;
+  --tab-container-background: transparent;
+  --titlebar-background-focused: transparent;
+
+  --file-header-justify: left;
+  --vault-profile-display: none;
+  --tab-text-color-focused-active-current: var(--color-accent);
+
+  background-image: var(--background-image);
+  background-position: var(--background-primary-position);
+  background-repeat: var(--background-primary-repeat);
+  background-size: var(--background-primary-size);
+  background-color: var(--transparent-background);
+}
+
+.theme-light {
+  --transparent-background: rgba(
+    255,
+    255,
+    255,
+    var(--background-overlay-opacity-light)
+  );
+  --overlay-background: rgba(255, 255, 255, 0.9);
+  --divider-color: rgba(0, 0, 0, 0);
+  --code-background: rgba(255, 255, 255, 0.3);
+  --checkbox-marker-color: black;
+}
+
+.theme-dark {
+  --transparent-background: rgba(
+    0,
+    0,
+    0,
+    var(--background-overlay-opacity-dark)
+  );
+  --overlay-background: rgba(0, 0, 0, 0.9);
+  --divider-color: rgba(255, 255, 255, 0);
+  --code-background: rgba(0, 0, 0, 0.3);
+  --checkbox-marker-color: white;
+}
+
+.popover,
+.suggestion-container,
+.cm-tooltip.cm-tooltip-autocomplete {
+  background-color: var(--overlay-background);
+}
+
+.app-container {
+  background-color: var(--transparent-background);
+}
+
+/**
+ * When "Translucent window" is enabled, Obsidian's core app.css applies
+ * `.is-translucent .app-container { background-color: ... }` (specificity 0,2,0),
+ * which out-specifies the rule above and ignores the overlay opacity.
+ * Re-assert our overlay at higher specificity (0,2,1) so the configured
+ * opacity always wins, in both windowed and full-screen modes.
+ */
+body.is-translucent .app-container {
+  background-color: var(--transparent-background);
+}
+
+.external-link {
+  padding-inline-end: 1.2rem;
+}
+
+/**
+ * Callouts
+ */
+.callout {
+  display: inline-block;
+}
+
+.callout-title {
+  gap: 0.5rem;
+}
+
+.callout-content p:last-child,
+.callout-content ol:last-child,
+.callout-content ul:last-child {
+  margin-block-end: 0;
+}
