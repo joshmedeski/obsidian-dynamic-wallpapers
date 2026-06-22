@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate tag matches manifest version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          MANIFEST_VERSION="$(node -p "require('./public/manifest.json').version")"
+          if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match public/manifest.json version ($MANIFEST_VERSION)."
+            echo "Bump the version in public/manifest.json (and versions.json) before tagging."
+            exit 1
+          fi
+          echo "Tag $TAG_VERSION matches manifest.json."
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify release artifacts
+        run: |
+          test -f build/manifest.json || (echo "missing build/manifest.json" && exit 1)
+          test -f build/main.js || (echo "missing build/main.js" && exit 1)
+          test -f build/styles.css || (echo "missing build/styles.css" && exit 1)
+
+      - name: Stage release artifacts
+        run: |
+          mkdir -p release
+          cp build/main.js release/main.js
+          cp build/manifest.json release/manifest.json
+          cp build/styles.css release/styles.css
+          cp versions.json release/versions.json
+
+      - name: Create GitHub release with auto-generated notes
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            Download `main.js`, `manifest.json`, and `styles.css` from the assets below and place them in
+            `<your-vault>/.obsidian/plugins/dynamic-wallpaper-plugin/`, then enable **Dynamic Wallpaper**
+            in Settings → Community Plugins.
+
+            See the [README](https://github.com/${{ github.repository }}#installation) for BRAT and manual install instructions.
+
+            <!-- The full changelog of merged PRs and commits since the previous tag is appended below by GitHub. -->
+          files: |
+            release/main.js
+            release/manifest.json
+            release/styles.css
+            release/versions.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

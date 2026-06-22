@@ -60,6 +60,32 @@ A `version-bump.mjs` helper script is included; read it before relying on it (it
 
 Before opening a PR, run `npm run check` and `npm run build` locally. CI is the same chain — a green local build means a green PR.
 
+## Releases
+
+Releases are driven by pushing a version tag:
+
+```bash
+# 1. Bump the version in public/manifest.json and versions.json (and run
+#    `node version-bump.mjs <new-version>` if it covers your case — read
+#    the script first).
+# 2. Commit the version bump on main.
+# 3. Tag and push.
+git tag v<version>
+git push origin v<version>
+```
+
+`.github/workflows/release.yml` then:
+
+1. Validates the tag version (e.g. `v1.2.3`) matches `public/manifest.json` `version`. If not, the job fails with a clear message.
+2. Runs `npm run check` and `npm run build`.
+3. Verifies the three release artifacts exist.
+4. Uses `softprops/action-gh-release@v2` with `generate_release_notes: true` to create a GitHub release. GitHub automatically appends the changelog (PRs, commits, contributors) since the previous tag.
+5. Attaches `main.js`, `manifest.json`, `styles.css`, and `versions.json` to the release.
+
+Tag names containing `-` (e.g. `v1.2.0-beta.1`) are marked as pre-releases. Plain `vX.Y.Z` tags publish as full releases.
+
+The workflow cannot be triggered manually from the Actions tab — it only fires on `v*` tag pushes. This is intentional: it keeps the "release" label meaningful and avoids accidental publishes.
+
 ## Conventions
 
 - Use `svelte/store` for state management (`writable`).
