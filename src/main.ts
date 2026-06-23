@@ -61,10 +61,20 @@ export default class DynamicWallpaperPlugin extends Plugin {
   private currentWallpaper: TFile | null = null;
   private wallpaperCache!: WallpaperCache;
   private syncDebounceTimer: NodeJS.Timeout | null = null;
+  // Tracks the last-seen value of the wallpaper frontmatter property per
+  // file, so the metadataCache 'changed' listener can compare the new
+  // value against the previous one and only repaint when the wallpaper
+  // property itself actually changed. Without this, every keystroke that
+  // triggers metadataCache.changed would re-roll a `wallpaper: Random`
+  // note — see the random-keyword short-circuit in updateWallpaper().
+  private lastWallpaperValues: Map<string, unknown> = new Map();
 
   async onload() {
     await this.loadSettings();
     initStore(this);
+    // Seed baseline values so the first edit doesn't always trigger a
+    // repaint (otherwise `oldValue` would be undefined for every file).
+    this.seedWallpaperValues();
 
     if (this.manifest.dir) {
       this.wallpaperCache = new WallpaperCache(
@@ -219,14 +229,32 @@ export default class DynamicWallpaperPlugin extends Plugin {
       })
     );
 
-    // Listen for file modifications
+    // Listen for frontmatter modifications, but only repaint when the
+    // wallpaper property itself changed. metadataCache.changed fires
+    // after Obsidian re-indexes the file (including body-only edits),
+    // so without this guard every keystroke would re-roll a
+    // `wallpaper: Random` note. We compare the *new* value (from
+    // _cache.frontmatter) against the previous value we cached in
+    // lastWallpaperValues. Note: getFileCache() returns the *new* cache
+    // at the moment 'changed' fires, which is why we keep our own
+    // baseline — not why we'd want to use JSON.parse on _data.
     this.registerEvent(
-      this.app.metadataCache.on('changed', (file: TFile) => {
-        const activeFile = this.app.workspace.getActiveFile();
-        if (activeFile && activeFile.path === file.path) {
-          this.updateWallpaper();
+      this.app.metadataCache.on(
+        'changed',
+        (file: TFile, _data: string, _cache) => {
+          const activeFile = this.app.workspace.getActiveFile();
+          if (!activeFile || activeFile.path !== file.path) return;
+
+          const prop = this.settings.wallpaperProperty;
+          const oldValue = this.lastWallpaperValues.get(file.path);
+          const newValue = _cache?.frontmatter?.[prop];
+
+          if (oldValue !== newValue) {
+            this.updateWallpaper();
+          }
+          this.lastWallpaperValues.set(file.path, newValue);
         }
-      })
+      )
     );
   }
 
@@ -239,6 +267,9 @@ export default class DynamicWallpaperPlugin extends Plugin {
     if (this.wallpaperCache) {
       this.wallpaperCache.updateSettings(this.settings.ffmpegPath);
     }
+    // Reseed the wallpaper-property cache because the user may have
+    // changed which frontmatter key counts as the wallpaper property.
+    this.seedWallpaperValues();
     this.updateWallpaper(); // Update wallpaper immediately when settings change
   }
 
@@ -371,6 +402,26 @@ export default class DynamicWallpaperPlugin extends Plugin {
     return images[Math.floor(Math.random() * images.length)];
   }
 
+  /**
+   * Populate lastWallpaperValues with the current wallpaper-property value
+   * for every markdown file in the vault. Called from onload() so the
+   * metadataCache 'changed' listener has a baseline to diff against.
+   *
+   * Also called from saveSettings() because the wallpaper property *name*
+   * may have changed; old map entries would be stale under the new key.
+   */
+  private seedWallpaperValues(): void {
+    const prop = this.settings.wallpaperProperty;
+    this.lastWallpaperValues.clear();
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      this.lastWallpaperValues.set(
+        file.path,
+        cache?.frontmatter?.[prop]
+      );
+    }
+  }
+
   private findWallpaperFromLinks(
     links: { link: string }[],
     sourcePath: string
@@ -404,6 +455,13 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     const metadata = this.app.metadataCache.getFileCache(activeFile);
     let wallpaper = metadata?.frontmatter?.[this.settings.wallpaperProperty];
+
+    // Keep lastWallpaperValues in sync with the value we just observed, so
+    // the next metadataCache.changed event compares against the right
+    // baseline. This is called from onload, file-open, and the wallpaper-
+    // property-changed branch — all the legitimate "re-evaluate now"
+    // triggers.
+    this.lastWallpaperValues.set(activeFile.path, wallpaper);
 
     // Priority 1b: Random keyword — if the direct property matches the
     // configured random keyword, pick a random image from wallpapersPath.
