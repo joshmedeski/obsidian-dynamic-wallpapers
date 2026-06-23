@@ -11,6 +11,7 @@ export interface PluginSettings {
   inheritFromFrontmatterLinks: boolean;
   inheritFromBodyLinks: boolean;
   keepExistingWallpaper: boolean;
+  randomKeyword: string;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -23,6 +24,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   inheritFromFrontmatterLinks: true,
   inheritFromBodyLinks: true,
   keepExistingWallpaper: true,
+  randomKeyword: "Random",
 };
 
 export const pluginSettings = writable<PluginSettings>(DEFAULT_SETTINGS);

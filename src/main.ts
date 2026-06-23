@@ -207,9 +207,14 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     this.updateWallpaper();
 
-    // Listen for active file changes
+    // Listen for active file changes.
+    // Use `file-open` (not `active-leaf-change`): on a click navigation,
+    // `active-leaf-change` fires on mouse-down while Obsidian still has the
+    // previous note's metadata in the active file, which would cause a
+    // `wallpaper: Random` note to re-roll before the click commits.
+    // `file-open` fires when the file is actually opened/committed.
     this.registerEvent(
-      this.app.workspace.on('active-leaf-change', () => {
+      this.app.workspace.on('file-open', () => {
         this.updateWallpaper();
       })
     );
@@ -337,29 +342,33 @@ export default class DynamicWallpaperPlugin extends Plugin {
     const folder = this.app.vault.getAbstractFileByPath(wallpapersPath);
 
     if (folder instanceof TFolder) {
-      const images = folder.children.filter((file) => {
-        if (file instanceof TFile) {
-          return isImageFile(file);
-        }
-        return false;
-      });
-
-      if (images.length > 0) {
-        const randomImage = images[Math.floor(Math.random() * images.length)];
-        if (randomImage instanceof TFile) {
-          this.currentWallpaper = randomImage;
-          const wallpaperUrl = this.app.vault.getResourcePath(randomImage);
-          document.body.style.setProperty(
-            '--background-image',
-            `url("${wallpaperUrl}")`
-          );
-        }
+      const randomImage = this.selectRandomWallpaperFile();
+      if (randomImage) {
+        this.currentWallpaper = randomImage;
+        const wallpaperUrl = this.app.vault.getResourcePath(randomImage);
+        document.body.style.setProperty(
+          '--background-image',
+          `url("${wallpaperUrl}")`
+        );
       } else {
         new Notice('No images found in the specified wallpaper directory.');
       }
     } else {
       new Notice('Wallpaper directory not found.');
     }
+  }
+
+  private selectRandomWallpaperFile(): TFile | null {
+    const { wallpapersPath } = this.settings;
+    const folder = this.app.vault.getAbstractFileByPath(wallpapersPath);
+    if (!(folder instanceof TFolder)) return null;
+
+    const images = folder.children.filter(
+      (file): file is TFile => file instanceof TFile && isImageFile(file)
+    );
+    if (images.length === 0) return null;
+
+    return images[Math.floor(Math.random() * images.length)];
   }
 
   private findWallpaperFromLinks(
@@ -395,6 +404,30 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     const metadata = this.app.metadataCache.getFileCache(activeFile);
     let wallpaper = metadata?.frontmatter?.[this.settings.wallpaperProperty];
+
+    // Priority 1b: Random keyword — if the direct property matches the
+    // configured random keyword, pick a random image from wallpapersPath.
+    // Case-insensitive and wiki-bracket tolerant. Skips inheritance entirely
+    // because the user explicitly asked for a random pick on this note.
+    if (wallpaper != null) {
+      const clean = String(wallpaper).replace(/\[\[|\]\]/g, '').trim().toLowerCase();
+      const keyword = this.settings.randomKeyword.trim().toLowerCase();
+      if (keyword && clean === keyword) {
+        const randomImage = this.selectRandomWallpaperFile();
+        if (randomImage) {
+          this.currentWallpaper = randomImage;
+          const wallpaperUrl = this.app.vault.getResourcePath(randomImage);
+          document.body.style.setProperty(
+            '--background-image',
+            `url("${wallpaperUrl}")`
+          );
+        } else if (!this.settings.keepExistingWallpaper) {
+          this.currentWallpaper = null;
+          document.body.style.removeProperty('--background-image');
+        }
+        return;
+      }
+    }
 
     // Priority 2: Inheritance property (specific frontmatter key)
     if (!wallpaper && this.settings.inheritanceProperty) {
