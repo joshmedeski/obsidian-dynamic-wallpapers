@@ -9,6 +9,7 @@
   let ffmpegPath = $pluginSettings.ffmpegPath;
   let overlayOpacityLight = $pluginSettings.overlayOpacityLight;
   let overlayOpacityDark = $pluginSettings.overlayOpacityDark;
+  let randomKeyword = $pluginSettings.randomKeyword;
 
   // Subscribe to store updates to keep local variable in sync
   $: wallpaperProperty = $pluginSettings.wallpaperProperty;
@@ -16,6 +17,7 @@
   $: ffmpegPath = $pluginSettings.ffmpegPath;
   $: overlayOpacityLight = $pluginSettings.overlayOpacityLight;
   $: overlayOpacityDark = $pluginSettings.overlayOpacityDark;
+  $: randomKeyword = $pluginSettings.randomKeyword;
 
   let inheritanceProperty = $pluginSettings.inheritanceProperty;
   let inheritFromFrontmatterLinks = $pluginSettings.inheritFromFrontmatterLinks;
@@ -134,6 +136,11 @@
   function selectPropertySuggestion(key: string) {
     pluginSettings.update((s) => ({ ...s, wallpaperProperty: key }));
     showPropertySuggestions = false;
+  }
+
+  function updateRandomKeyword(e: Event) {
+    const target = e.target as HTMLInputElement;
+    pluginSettings.update((s) => ({ ...s, randomKeyword: target.value }));
   }
 
   function handlePropertyKeydown(e: KeyboardEvent) {
@@ -286,6 +293,25 @@
               {/each}
             </div>
           {/if}
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-item-info">
+          <div class="setting-item-name">Random Keyword</div>
+          <div class="setting-item-description">
+            Set the frontmatter property to this value (case-insensitive) to
+            pick a random wallpaper from the directory above each time this
+            note is opened. Leave empty to disable.
+          </div>
+        </div>
+        <div class="setting-item-control">
+          <input
+            type="text"
+            value={randomKeyword}
+            on:input={updateRandomKeyword}
+            placeholder="e.g., Random"
+          />
         </div>
       </div>
 
