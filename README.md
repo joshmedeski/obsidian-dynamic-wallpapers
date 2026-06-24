@@ -18,10 +18,10 @@ This plugin isn't in the Obsidian Community Plugins directory yet, so install it
 
 1. Download the latest release from the [Releases](../../releases) page.
 2. Extract the zip so you have `manifest.json`, `main.js`, and `styles.css`.
-3. Move those three files into `<your-vault>/.obsidian/plugins/dynamic-wallpaper-plugin/`.
+3. Move those three files into `<your-vault>/.obsidian/plugins/dynamic-wallpapers-plugin/`.
 4. Enable **Dynamic Wallpaper** in Settings → Community Plugins (you may need to disable Restricted Mode first).
 
-> Note: Obsidian loads any subfolder of `.obsidian/plugins/` that contains a valid `manifest.json`. For releases, name the folder after the plugin id (`dynamic-wallpaper-plugin`) so users get a predictable install path. For local development, the folder name is arbitrary — pick whatever's convenient.
+> Note: Obsidian loads any subfolder of `.obsidian/plugins/` that contains a valid `manifest.json`. For releases, name the folder after the plugin id (`dynamic-wallpapers-plugin`) so users get a predictable install path. For local development, the folder name is arbitrary — pick whatever's convenient.
 
 ## Features
 
@@ -80,7 +80,7 @@ The wallpaper picker, random command, and thumbnail cache only recognize: `png`,
 
 This plugin accesses the filesystem and optionally runs an external tool beyond what Obsidian's standard vault APIs provide:
 
-- **Thumbnail cache** - Creates a `.cache` directory inside the plugin's own folder (`<vault>/.obsidian/plugins/dynamic-wallpaper-plugin/.cache/`) to store generated wallpaper thumbnails (480×270 cropped JPEGs produced by FFmpeg). No files outside the vault are created.
+- **Thumbnail cache** - Creates a `.cache` directory inside the plugin's own folder (`<vault>/.obsidian/plugins/dynamic-wallpapers-plugin/.cache/`) to store generated wallpaper thumbnails (480×270 cropped JPEGs produced by FFmpeg). No files outside the vault are created.
 - **FFmpeg execution** - If FFmpeg is available, the plugin invokes it via `child_process.exec()` to generate thumbnail images and to horizontally flip wallpaper files. The FFmpeg path is configurable in settings. FFmpeg is optional; the plugin works without it (thumbnails fall back to full-size images).
 - **Node.js `fs` APIs** - Used for reading/writing thumbnail cache files and for the image flip operation. All file operations stay within the vault directory.
 

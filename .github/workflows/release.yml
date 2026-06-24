@@ -69,7 +69,7 @@ jobs:
             ## Installation
 
             Download `main.js`, `manifest.json`, and `styles.css` from the assets below and place them in
-            `<your-vault>/.obsidian/plugins/dynamic-wallpaper-plugin/`, then enable **Dynamic Wallpaper**
+            `<your-vault>/.obsidian/plugins/dynamic-wallpapers-plugin/`, then enable **Dynamic Wallpaper**
             in Settings → Community Plugins.
 
             See the [README](https://github.com/${{ github.repository }}#installation) for BRAT and manual install instructions.

@@ -1,5 +1,5 @@
 {
-  "name": "obsidian-dynamic-wallpaper-plugin",
+  "name": "obsidian-dynamic-wallpapers-plugin",
   "private": true,
   "scripts": {
     "dev": "node esbuild.config.mjs",
