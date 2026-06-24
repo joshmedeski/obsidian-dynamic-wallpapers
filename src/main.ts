@@ -333,33 +333,83 @@ export default class DynamicWallpaperPlugin extends Plugin {
   }
 
   async pickRandomWallpaper() {
-    const { wallpapersPath } = this.settings;
-    const folder = this.app.vault.getAbstractFileByPath(wallpapersPath);
-
-    if (folder instanceof TFolder) {
-      const images = folder.children.filter((file) => {
-        if (file instanceof TFile) {
-          return isImageFile(file);
-        }
-        return false;
-      });
-
-      if (images.length > 0) {
-        const randomImage = images[Math.floor(Math.random() * images.length)];
-        if (randomImage instanceof TFile) {
-          this.currentWallpaper = randomImage;
-          const wallpaperUrl = this.app.vault.getResourcePath(randomImage);
-          document.body.style.setProperty(
-            '--background-image',
-            `url("${wallpaperUrl}")`
-          );
-        }
-      } else {
-        new Notice('No images found in the specified wallpaper directory.');
-      }
-    } else {
-      new Notice('Wallpaper directory not found.');
+    // "Pick random wallpaper" picks a random *backlink note* of the active
+    // file and resolves that note's wallpaper through the same priority
+    // chain. We never reuse the wallpaper that's currently displayed, and if
+    // there is only one candidate we leave the current wallpaper untouched.
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      new Notice('No active note.');
+      return;
     }
+
+    // Collect every note that links TO the active note.
+    const resolvedLinks = this.app.metadataCache.resolvedLinks;
+    const backlinkPaths: string[] = [];
+    for (const [sourcePath, destinations] of Object.entries(resolvedLinks)) {
+      if (activeFile.path in destinations) {
+        backlinkPaths.push(sourcePath);
+      }
+    }
+
+    if (backlinkPaths.length === 0) {
+      new Notice('No backlinks found for this note.');
+      return;
+    }
+
+    // Shuffle backlinks (Fisher–Yates) so we can short-circuit on the first
+    // candidate whose resolved wallpaper differs from the current one.
+    const shuffled = backlinkPaths.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    const currentPath = this.currentWallpaper?.path ?? null;
+
+    for (const sourcePath of shuffled) {
+      const backlinkFile = this.app.vault.getAbstractFileByPath(sourcePath);
+      if (!(backlinkFile instanceof TFile)) continue;
+
+      const resolved = this.resolveWallpaperForFile(backlinkFile);
+      if (!resolved) continue;
+
+      // `resolved` may be a wiki link (e.g. "[[foo.png]]") or a raw path.
+      // Compare against the *file* we'd resolve it to, since that's what
+      // ends up displayed as the current wallpaper.
+      const cleanResolved = resolved.replace(/\[\[|\]\]/g, '');
+      const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(
+        cleanResolved,
+        backlinkFile.path
+      );
+
+      // Skip if it points at the wallpaper that's already on screen.
+      if (resolvedFile && currentPath && resolvedFile.path === currentPath) {
+        continue;
+      }
+
+      // Found a new candidate — apply it.
+      if (resolvedFile instanceof TFile) {
+        this.currentWallpaper = resolvedFile;
+        const wallpaperUrl = this.app.vault.getResourcePath(resolvedFile);
+        document.body.style.setProperty(
+          '--background-image',
+          `url("${wallpaperUrl}")`
+        );
+      } else {
+        // Fallback: raw value didn't resolve to an attachment file.
+        this.currentWallpaper = null;
+        document.body.style.setProperty(
+          '--background-image',
+          `url("${cleanResolved}")`
+        );
+      }
+      return;
+    }
+
+    // Every backlink resolved to the wallpaper that's already displayed (or
+    // every backlink had no wallpaper at all and there was nothing to pick).
+    new Notice('No other wallpaper available from backlinks.');
   }
 
   private findWallpaperFromLinks(
@@ -379,6 +429,48 @@ export default class DynamicWallpaperPlugin extends Plugin {
     return undefined;
   }
 
+  /**
+   * Resolve a wallpaper string for an arbitrary note using the full priority
+   * chain (direct → inheritance property → frontmatter links → body links →
+   * backlinks of `targetFile`). Returns the raw frontmatter value (may include
+   * `[[brackets]]`) or `undefined` if no wallpaper is found.
+   */
+  private resolveWallpaperForFile(targetFile: TFile): string | undefined {
+    const metadata = this.app.metadataCache.getFileCache(targetFile);
+    let wallpaper = metadata?.frontmatter?.[this.settings.wallpaperProperty];
+
+    if (!wallpaper && this.settings.inheritanceProperty) {
+      const fmLinks = (metadata?.frontmatterLinks ?? [])
+        .filter(l => l.key === this.settings.inheritanceProperty);
+      wallpaper = this.findWallpaperFromLinks(fmLinks, targetFile.path);
+    }
+
+    if (!wallpaper && this.settings.inheritFromFrontmatterLinks) {
+      const fmLinks = metadata?.frontmatterLinks ?? [];
+      wallpaper = this.findWallpaperFromLinks(fmLinks, targetFile.path);
+    }
+
+    if (!wallpaper && this.settings.inheritFromBodyLinks) {
+      const links = (metadata?.links ?? []).slice().reverse();
+      wallpaper = this.findWallpaperFromLinks(links, targetFile.path);
+    }
+
+    if (!wallpaper && this.settings.inheritFromBacklinks) {
+      const resolvedLinks = this.app.metadataCache.resolvedLinks;
+      const backlinkFiles: { link: string }[] = [];
+      for (const [sourcePath, destinations] of Object.entries(resolvedLinks)) {
+        if (targetFile.path in destinations) {
+          backlinkFiles.push({ link: sourcePath });
+        }
+      }
+      if (backlinkFiles.length > 0) {
+        wallpaper = this.findWallpaperFromLinks(backlinkFiles, targetFile.path);
+      }
+    }
+
+    return wallpaper;
+  }
+
   private updateWallpaper() {
     // Update overlay opacity CSS variables
     document.body.style.setProperty(
@@ -393,27 +485,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) return;
 
-    const metadata = this.app.metadataCache.getFileCache(activeFile);
-    let wallpaper = metadata?.frontmatter?.[this.settings.wallpaperProperty];
-
-    // Priority 2: Inheritance property (specific frontmatter key)
-    if (!wallpaper && this.settings.inheritanceProperty) {
-      const fmLinks = (metadata?.frontmatterLinks ?? [])
-        .filter(l => l.key === this.settings.inheritanceProperty);
-      wallpaper = this.findWallpaperFromLinks(fmLinks, activeFile.path);
-    }
-
-    // Priority 3: All frontmatter links
-    if (!wallpaper && this.settings.inheritFromFrontmatterLinks) {
-      const fmLinks = metadata?.frontmatterLinks ?? [];
-      wallpaper = this.findWallpaperFromLinks(fmLinks, activeFile.path);
-    }
-
-    // Priority 4: Body links (reverse order — last link wins)
-    if (!wallpaper && this.settings.inheritFromBodyLinks) {
-      const links = (metadata?.links ?? []).slice().reverse();
-      wallpaper = this.findWallpaperFromLinks(links, activeFile.path);
-    }
+    const wallpaper = this.resolveWallpaperForFile(activeFile);
 
     if (wallpaper) {
       // Strip wiki link brackets if present
