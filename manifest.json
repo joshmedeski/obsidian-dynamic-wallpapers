@@ -1,7 +1,7 @@
 {
   "id": "dynamic-wallpapers",
   "name": "Dynamic Wallpapers",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "minAppVersion": "1.4.0",
   "description": "Dynamically change your Obsidian background with wallpapers that adapt to what you're doing.",
   "author": "Josh Medeski",
