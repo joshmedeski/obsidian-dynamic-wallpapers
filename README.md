@@ -2,40 +2,18 @@
 
 Set per-note background wallpapers in Obsidian using frontmatter properties. Wallpapers can be inherited from linked notes, browsed in a gallery, or randomized from any combination of inheritance tiers.
 
+- 🖼️ **Per-note wallpapers:** Set a `wallpaper` frontmatter property linking to an image in your vault
+- 🔗 **Wallpaper inheritance:** Notes without a wallpaper can inherit from linked notes (via a specific frontmatter property, all frontmatter links, body links, or backlinks)
+- 🎨 **Wallpaper picker:** Browse and select wallpapers from a visual gallery with thumbnail previews
+- 🎲 **Random wallpaper:** Pick a random wallpaper from the active note's backlink pool, or from the full set of related wallpapers
+- 🗂️ **Related wallpapers modal:** See every wallpaper that could apply to the active note, grouped by which inheritance tier produced it
+- 🧹 **Thumbnail cache management:** Clear or rebuild the cached thumbnails that power the picker and related-wallpapers modal
+- 🌗 **Overlay opacity:** Adjust a color overlay per theme (light/dark) so text remains readable
+- ↔️ **Flip wallpaper:** Horizontally flip the current wallpaper image
+- 📌 **Set wallpaper to note:** Save the currently displayed wallpaper into the active note's frontmatter
+- 🔒 **Keep existing wallpaper:** Optionally retain the wallpaper when navigating to notes without one
+
 > **Desktop-only.** This plugin uses Node.js `fs` APIs, which are not available on Obsidian Mobile.
-
-## Installation
-
-This plugin isn't in the Obsidian Community Plugins directory yet, so install it via one of the methods below.
-
-### Option 1: BRAT (recommended for testing)
-
-1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin from Community Plugins.
-2. In BRAT → "Add Beta plugin", paste: `joshmedeski/obsidian-dynamic-wallpapers`
-3. Enable **Dynamic Wallpaper** in Settings → Community Plugins.
-
-### Option 2: Manual install
-
-1. Download the latest release from the [Releases](../../releases) page.
-2. Extract the zip so you have `manifest.json`, `main.js`, and `styles.css`.
-3. Move those three files into `<your-vault>/.obsidian/plugins/dynamic-wallpapers-plugin/`.
-4. Enable **Dynamic Wallpaper** in Settings → Community Plugins (you may need to disable Restricted Mode first).
-
-> Note: Obsidian loads any subfolder of `.obsidian/plugins/` that contains a valid `manifest.json`. For releases, name the folder after the plugin id (`dynamic-wallpapers-plugin`) so users get a predictable install path. For local development, the folder name is arbitrary — pick whatever's convenient.
-
-## Features
-
-- **Per-note wallpapers** - Set a `wallpaper` frontmatter property linking to an image in your vault
-- **Wallpaper inheritance** - Notes without a wallpaper can inherit from linked notes (via a specific frontmatter property, all frontmatter links, body links, or backlinks)
-- **Wallpaper picker** - Browse and select wallpapers from a visual gallery with thumbnail previews
-- **Random wallpaper** - Pick a random wallpaper from the active note's backlink pool, or from the full set of related wallpapers
-- **Related wallpapers modal** - See every wallpaper that could apply to the active note, grouped by which inheritance tier produced it
-- **Thumbnail cache management** - Clear or rebuild the cached thumbnails that power the picker and related-wallpapers modal
-- **Overlay opacity** - Adjust a color overlay per theme (light/dark) so text remains readable
-- **Low-opacity legibility boost** - When overlay opacity drops below 0.2, apply a soft text shadow so body text stays readable on busy wallpapers
-- **Flip wallpaper** - Horizontally flip the current wallpaper image
-- **Set wallpaper to note** - Save the currently displayed wallpaper into the active note's frontmatter
-- **Keep existing wallpaper** - Optionally retain the wallpaper when navigating to notes without one
 
 ## Commands
 
