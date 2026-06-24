@@ -2,7 +2,7 @@
 
 Set per-note background wallpapers in Obsidian using frontmatter properties. Wallpapers can be inherited from linked notes, browsed in a gallery, or randomized from any combination of inheritance tiers.
 
-> **Desktop-only.** This plugin uses FFmpeg and Node.js `fs` APIs, which are not available on Obsidian Mobile.
+> **Desktop-only.** This plugin uses Node.js `fs` APIs, which are not available on Obsidian Mobile.
 
 ## Installation
 
@@ -30,9 +30,10 @@ This plugin isn't in the Obsidian Community Plugins directory yet, so install it
 - **Wallpaper picker** - Browse and select wallpapers from a visual gallery with thumbnail previews
 - **Random wallpaper** - Pick a random wallpaper from the active note's backlink pool, or from the full set of related wallpapers
 - **Related wallpapers modal** - See every wallpaper that could apply to the active note, grouped by which inheritance tier produced it
+- **Thumbnail cache management** - Clear or rebuild the cached thumbnails that power the picker and related-wallpapers modal
 - **Overlay opacity** - Adjust a color overlay per theme (light/dark) so text remains readable
 - **Low-opacity legibility boost** - When overlay opacity drops below 0.2, apply a soft text shadow so body text stays readable on busy wallpapers
-- **Flip wallpaper** - Horizontally flip the current wallpaper image (requires FFmpeg)
+- **Flip wallpaper** - Horizontally flip the current wallpaper image
 - **Set wallpaper to note** - Save the currently displayed wallpaper into the active note's frontmatter
 - **Keep existing wallpaper** - Optionally retain the wallpaper when navigating to notes without one
 
@@ -97,14 +98,28 @@ Re-runs the full wallpaper resolution pipeline for the active note. Useful after
 
 - **Requires**: an active note.
 
+### Clear Thumbnail Cache
+
+Deletes every file in the plugin's `.cache` directory. The picker, related-wallpapers modal, and any other view that displays cached thumbnails immediately fall back to the original full-size images; new thumbnails regenerate on the next sync (triggered by the usual file-create/modify events, or manually via *Rebuild Thumbnail Cache*).
+
+- **Requires**: nothing.
+- **No-op when**: the cache directory is already empty (a Notice reports this).
+
+### Rebuild Thumbnail Cache
+
+Wipes the cache directory and re-syncs against the configured Wallpapers Directory, regenerating a thumbnail for every image. Use this if thumbnails look wrong (stale file extension, broken mtime keying, or just a fresh start after editing source files outside Obsidian). A progress Notice (`Generating thumbnails: N/M`) reports status while the rebuild runs.
+
+- **Requires**: a valid Wallpapers Directory.
+- **No-op when**: the directory is missing, or contains no images with a recognized extension.
+
 ### Flip Current Wallpaper (Horizontal)
 
-Mirrors the current wallpaper image in place via FFmpeg. The image file is **overwritten** — there is no undo. After flipping, the wallpaper refreshes automatically.
+Mirrors the current wallpaper image in place using the browser's canvas API. The image file is **overwritten** — there is no undo. After flipping, the wallpaper refreshes automatically.
 
 > ⚠️ **This command overwrites the source image file in place.** Make a backup first if the original matters. Do not run it on a wallpaper that's stored outside the vault (e.g., a remote attachment that exists only by reference).
 
-- **Requires**: FFmpeg available at the configured path (default: `ffmpeg` on `PATH`), and a wallpaper currently set as the plugin's `currentWallpaper`.
-- **No-op when**: FFmpeg is missing, the path is invalid, or no wallpaper is currently set.
+- **Requires**: a wallpaper currently set as the plugin's `currentWallpaper`.
+- **No-op when**: no wallpaper is currently set, or the source file fails to decode.
 
 ## Settings
 
@@ -120,7 +135,6 @@ Mirrors the current wallpaper image in place via FFmpeg. The image file is **ove
 | Overlay Opacity (Light Mode) | `0.8` | Overlay opacity in light mode (0-1) |
 | Overlay Opacity (Dark Mode) | `0.6` | Overlay opacity in dark mode (0-1) |
 | Boost text legibility at low opacity | `true` | When the active theme's overlay opacity drops below 0.2, apply a soft text shadow on body text so it stays readable while the wallpaper shows through. Black halo in light mode, white halo in dark mode. |
-| FFmpeg Binary Path | `ffmpeg` | Path to the FFmpeg executable (used for thumbnails and image flipping) |
 
 ### Wallpaper inheritance priority
 
@@ -137,13 +151,12 @@ Any of these steps can be disabled via the corresponding setting. A backlink of 
 
 The wallpaper picker, related-wallpapers modal, thumbnail cache, and random-pick commands only recognize: `png`, `jpg`, `jpeg`, `webp`, `gif`, `bmp`, and `svg`. Files with other extensions are silently skipped.
 
-## Filesystem and External Tool Disclosure
+## Filesystem Disclosure
 
-This plugin accesses the filesystem and optionally runs an external tool beyond what Obsidian's standard vault APIs provide:
+This plugin accesses the filesystem beyond what Obsidian's standard vault APIs provide:
 
-- **Thumbnail cache** - Creates a `.cache` directory inside the plugin's own folder (`<vault>/.obsidian/plugins/dynamic-wallpapers-plugin/.cache/`) to store generated wallpaper thumbnails (480×270 cropped JPEGs produced by FFmpeg). No files outside the vault are created.
-- **FFmpeg execution** - If FFmpeg is available, the plugin invokes it via `child_process.exec()` to generate thumbnail images and to horizontally flip wallpaper files. The FFmpeg path is configurable in settings. FFmpeg is optional; the plugin works without it (thumbnails fall back to full-size images).
-- **Node.js `fs` APIs** - Used for reading/writing thumbnail cache files and for the image flip operation. All file operations stay within the vault directory.
+- **Thumbnail cache** - Creates a `.cache` directory inside the plugin's own folder (`<vault>/.obsidian/plugins/dynamic-wallpapers-plugin/.cache/`) to store generated wallpaper thumbnails (480×270 cropped JPEGs). Thumbnails are generated from the original images via the browser's built-in canvas + `createImageBitmap` APIs — no external binary is required. No files outside the vault are created.
+- **Node.js `fs` APIs** - Used for reading/writing thumbnail cache files. All file operations stay within the vault directory.
 
 ## Contributing
 

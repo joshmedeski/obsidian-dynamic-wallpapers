@@ -122,4 +122,5 @@ The pi-side preview lets you catch changelog issues **before** the public releas
 - Plugin settings managed via `store.ts` pattern.
 - Dependencies: standalone npm project; versions pinned directly in `package.json`.
 - The wallpaper picker and thumbnail cache only recognize these image extensions: `png`, `jpg`, `jpeg`, `webp`, `gif`, `bmp`, `svg`. Other formats are silently filtered out.
-- `FFmpeg` is optional. The plugin works without it (thumbnails fall back to full-size images), but `Flip Current Wallpaper` requires it and **overwrites the source image in place** — do not call it on the user's only copy without a backup.
+- Thumbnails are generated with the browser's built-in `createImageBitmap` + `<canvas>` pipeline — no external binary required. The cache directory (`<pluginDir>/.cache/`) holds 480×270 cover-cropped JPEGs keyed by source mtime, mirroring what the old ffmpeg filter chain produced.
+- `Flip Current Wallpaper` mirrors the active wallpaper with a canvas transform and writes the result back through the vault adapter. It **overwrites the source image in place** — do not call it on the user's only copy without a backup.

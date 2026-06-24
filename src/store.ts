@@ -4,7 +4,6 @@ import type DynamicWallpaperPlugin from "./main";
 export interface PluginSettings {
   wallpaperProperty: string;
   wallpapersPath: string;
-  ffmpegPath: string;
   overlayOpacityLight: number;
   overlayOpacityDark: number;
   inheritanceProperty: string;
@@ -17,7 +16,6 @@ export interface PluginSettings {
 export const DEFAULT_SETTINGS: PluginSettings = {
   wallpaperProperty: "wallpaper",
   wallpapersPath: "/",
-  ffmpegPath: "ffmpeg",
   overlayOpacityLight: 0.8,
   overlayOpacityDark: 0.6,
   inheritanceProperty: "",

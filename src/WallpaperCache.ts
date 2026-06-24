@@ -1,6 +1,11 @@
-import { type App, FileSystemAdapter, Notice, TFile, TFolder } from 'obsidian';
-import { exec } from 'child_process';
-import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
+import {
+  type App,
+  FileSystemAdapter,
+  Notice,
+  TFile,
+  TFolder,
+} from 'obsidian';
+import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { join, relative } from 'path';
 
 interface QueueItem {
@@ -8,20 +13,36 @@ interface QueueItem {
   destPath: string;
 }
 
+// Output thumbnail dimensions. 16:9 to match the picker card aspect
+// ratio so the cached image is already cropped — no second pass in the
+// picker UI. The old ffmpeg command used 480x270 with the same
+// scale-then-crop filter chain, so the picker cache layout is unchanged.
+const THUMB_WIDTH = 480;
+const THUMB_HEIGHT = 270;
+const THUMB_QUALITY = 0.82;
+
+const MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+};
+
 export class WallpaperCache {
   private app: App;
   private pluginDir: string;
   private cacheDir: string;
-  private ffmpegPath: string;
   private queue: QueueItem[] = [];
   private isProcessing = false;
   private totalItemsToProcess = 0;
   private processedItemsCount = 0;
   private progressNotice: Notice | null = null;
 
-  constructor(app: App, manifestDir: string, ffmpegPath: string) {
+  constructor(app: App, manifestDir: string) {
     this.app = app;
-    this.ffmpegPath = ffmpegPath;
 
     const adapter = this.app.vault.adapter;
     if (adapter instanceof FileSystemAdapter) {
@@ -34,10 +55,6 @@ export class WallpaperCache {
     } else {
       throw new Error('FileSystemAdapter required for caching');
     }
-  }
-
-  updateSettings(ffmpegPath: string) {
-    this.ffmpegPath = ffmpegPath;
   }
 
   /**
@@ -93,6 +110,57 @@ export class WallpaperCache {
     if (itemsToProcess.length > 0) {
       this.addToQueue(itemsToProcess);
     }
+  }
+
+  /**
+   * Wipe every file in the cache directory. Used by the "Clear cache" and
+   * "Rebuild cache" commands. Returns the number of files removed so the
+   * caller can show a meaningful Notice on an empty cache.
+   *
+   * Safe to call while a queue is mid-flight — we drop pending items; the
+   * in-flight item finishes on its own and its output is harmless (it
+   * just recreates one cache file that sync() will regenerate again
+   * later if needed).
+   */
+  clearCache(): number {
+    if (!existsSync(this.cacheDir)) {
+      // Still reset pending work even if the dir is missing, so a stale
+      // queue can't outlive the cache it was writing to.
+      this.queue = [];
+      return 0;
+    }
+
+    let removed = 0;
+    for (const file of readdirSync(this.cacheDir)) {
+      try {
+        unlinkSync(join(this.cacheDir, file));
+        removed++;
+      } catch (e) {
+        console.error(`Failed to remove cache file: ${file}`, e);
+      }
+    }
+
+    // Drop pending work — their destination paths no longer exist. Leave
+    // the in-flight item alone; processQueue() finishes it then resets
+    // counters when it sees the queue is empty.
+    this.queue = [];
+
+    return removed;
+  }
+
+  /**
+   * Convenience helper for the "Rebuild cache" command — clears and then
+   * re-runs a sync against the supplied folder. Returns the number of
+   * files queued for regeneration (including any one already in flight)
+   * so the caller can show a meaningful Notice.
+   */
+  async rebuildCache(wallpaperFolder: TFolder): Promise<number> {
+    this.clearCache();
+    await this.sync(wallpaperFolder);
+
+    // After sync() pushes its work, this.queue holds everything still
+    // pending. The in-flight item, if any, is counted via isProcessing.
+    return this.queue.length + (this.isProcessing ? 1 : 0);
   }
 
   /**
@@ -183,26 +251,121 @@ export class WallpaperCache {
     sourceFile: TFile,
     destPath: string
   ): Promise<void> {
-    const adapter = this.app.vault.adapter;
-    if (!(adapter instanceof FileSystemAdapter)) return;
+    // Read the source bytes through the vault adapter (works on every
+    // platform Obsidian supports, including mobile). Then decode via the
+    // browser's built-in image stack instead of shelling out to ffmpeg.
+    const bytes = await this.app.vault.adapter.readBinary(sourceFile.path);
+    const mime = MIME_BY_EXT[sourceFile.extension.toLowerCase()] ?? 'image/png';
+    const blob = new Blob([bytes], { type: mime });
 
-    const sourcePath = adapter.getFullPath(sourceFile.path);
+    const bitmap = await this.decodeBitmap(blob, mime);
 
-    // FFmpeg command to resize to 480x270 while maintaining aspect ratio and cropping
-    // scale=-1:270 (height fixed), crop=480:270
-    // Added force_original_aspect_ratio=increase to ensure it covers the area before cropping
-    const command = `"${this.ffmpegPath}" -i "${sourcePath}" -vf "scale=480:270:force_original_aspect_ratio=increase,crop=480:270" -y "${destPath}"`;
+    const canvas = document.createElement('canvas');
+    canvas.width = THUMB_WIDTH;
+    canvas.height = THUMB_HEIGHT;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Failed to acquire 2D canvas context');
 
-    return new Promise((resolve, reject) => {
-      exec(command, (error, stdout, stderr) => {
-        if (error) {
-          // Log stderr for debugging
-          console.warn(`FFmpeg stderr: ${stderr}`);
-          reject(error);
-        } else {
-          resolve();
-        }
+    // Fill with black so transparent PNGs don't render as a checkerboard
+    // through JPEG's lack of an alpha channel.
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, THUMB_WIDTH, THUMB_HEIGHT);
+    ctx.drawImage(bitmap, 0, 0, THUMB_WIDTH, THUMB_HEIGHT);
+    bitmap.close?.();
+
+    const jpegBlob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', THUMB_QUALITY)
+    );
+    if (!jpegBlob) throw new Error('Canvas toBlob returned null');
+
+    const arrayBuffer = await jpegBlob.arrayBuffer();
+    // Direct fs write — mirrors the old ffmpeg write to disk and keeps
+    // the cache directory invisible to Obsidian's own sync/indexing.
+    writeFileSync(destPath, Buffer.from(arrayBuffer));
+  }
+
+  /**
+   * Decode a wallpaper into an ImageBitmap sized to cover THUMB_WIDTH x
+   * THUMB_HEIGHT. createImageBitmap handles raster formats (png/jpg/webp/
+   * gif/bmp) directly from a Blob; SVGs need to be loaded via an <img>
+   * element first because not every Chromium build accepts SVG Blobs in
+   * createImageBitmap. The crop+resize options give us the same
+   * "scale to cover, then center-crop" behavior the old ffmpeg filter
+   * used, in one step.
+   */
+  private async decodeBitmap(blob: Blob, mime: string): Promise<ImageBitmap> {
+    // Fast path: raster image → createImageBitmap with crop+resize.
+    if (mime !== 'image/svg+xml') {
+      try {
+        return await this.createCoverBitmap(blob);
+      } catch (e) {
+        console.warn(
+          '[WallpaperCache] createImageBitmap failed, falling back to <img>:',
+          e
+        );
+      }
+    }
+
+    // Fallback (also used for SVG): load via an Image element, then
+    // createImageBitmap from the element so we still get a GPU-friendly
+    // bitmap for the canvas draw.
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await this.loadImage(url);
+      const intrinsicW = img.naturalWidth || img.width;
+      const intrinsicH = img.naturalHeight || img.height;
+      const { sx, sy, sw, sh } = this.coverCropRect(intrinsicW, intrinsicH);
+      return await createImageBitmap(img, sx, sy, sw, sh, {
+        resizeWidth: THUMB_WIDTH,
+        resizeHeight: THUMB_HEIGHT,
+        resizeQuality: 'high',
       });
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  private async createCoverBitmap(blob: Blob): Promise<ImageBitmap> {
+    const probe = await createImageBitmap(blob);
+    const { sx, sy, sw, sh } = this.coverCropRect(probe.width, probe.height);
+    const resized = await createImageBitmap(blob, sx, sy, sw, sh, {
+      resizeWidth: THUMB_WIDTH,
+      resizeHeight: THUMB_HEIGHT,
+      resizeQuality: 'high',
+    });
+    probe.close?.();
+    return resized;
+  }
+
+  private coverCropRect(
+    width: number,
+    height: number
+  ): { sx: number; sy: number; sw: number; sh: number } {
+    // "Cover" crop: scale so the smaller dimension matches THUMB, then take
+    // the centered window. Matches ffmpeg's
+    // force_original_aspect_ratio=increase + centered crop.
+    const targetRatio = THUMB_WIDTH / THUMB_HEIGHT;
+    const sourceRatio = width / height;
+    let sw = width;
+    let sh = height;
+    if (sourceRatio > targetRatio) {
+      // Source is wider than target — crop horizontally.
+      sw = Math.round(height * targetRatio);
+    } else {
+      // Source is taller (or equal) — crop vertically.
+      sh = Math.round(width / targetRatio);
+    }
+    const sx = Math.round((width - sw) / 2);
+    const sy = Math.round((height - sh) / 2);
+    return { sx, sy, sw, sh };
+  }
+
+  private loadImage(src: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+      img.src = src;
     });
   }
 }
