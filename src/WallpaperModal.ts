@@ -8,7 +8,7 @@ interface WallpaperItem {
 }
 
 export class WallpaperModal extends Modal {
-  private component: any;
+  private component: Record<string, unknown> | undefined;
   private wallpapers: WallpaperItem[];
   private onSelect: (file: TFile) => void;
 
@@ -27,9 +27,8 @@ export class WallpaperModal extends Modal {
     contentEl.empty();
 
     this.modalEl.addClass('dynamic-wallpaper-modal');
-    this.modalEl.style.setProperty('--dialog-width', '90vw');
 
-    this.titleEl.setText('Choose Wallpaper');
+    this.titleEl.setText('Choose wallpaper');
 
     this.component = mount(WallpaperSelect, {
       target: contentEl,
@@ -45,7 +44,7 @@ export class WallpaperModal extends Modal {
 
   onClose() {
     if (this.component) {
-      unmount(this.component);
+      void unmount(this.component);
     }
     this.contentEl.empty();
   }

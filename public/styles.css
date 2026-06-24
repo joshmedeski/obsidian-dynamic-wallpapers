@@ -95,3 +95,11 @@ body.is-translucent .app-container {
 .callout-content ul:last-child {
   margin-block-end: 0;
 }
+
+/**
+ * Modals
+ */
+.related-wallpapers-modal,
+.dynamic-wallpaper-modal {
+  --dialog-width: 90vw;
+}

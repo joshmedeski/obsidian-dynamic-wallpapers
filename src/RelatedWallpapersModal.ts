@@ -7,7 +7,7 @@ import type {
 } from './RelatedWallpapersList.types';
 
 export class RelatedWallpapersModal extends Modal {
-  private component: any;
+  private component: Record<string, unknown> | undefined;
   private groups: RelatedWallpaperGroup[];
   private onSelectSource: (sourcePath: string) => void;
   private onSelectWallpaper: (
@@ -32,9 +32,8 @@ export class RelatedWallpapersModal extends Modal {
     contentEl.empty();
 
     this.modalEl.addClass('related-wallpapers-modal');
-    this.modalEl.style.setProperty('--dialog-width', '90vw');
 
-    this.titleEl.setText('Related Wallpapers');
+    this.titleEl.setText('Related wallpapers');
 
     this.component = mount(RelatedWallpapersList, {
       target: contentEl,
@@ -54,7 +53,7 @@ export class RelatedWallpapersModal extends Modal {
 
   onClose() {
     if (this.component) {
-      unmount(this.component);
+      void unmount(this.component);
     }
     this.contentEl.empty();
   }

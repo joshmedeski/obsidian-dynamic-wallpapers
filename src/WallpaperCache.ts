@@ -198,7 +198,7 @@ export class WallpaperCache {
     this.totalItemsToProcess += items.length;
 
     if (!this.isProcessing) {
-      this.processQueue();
+      void this.processQueue();
     } else {
       this.updateProgressNotice();
     }
@@ -222,7 +222,6 @@ export class WallpaperCache {
     const item = this.queue.shift();
     if (item) {
       try {
-        console.log('[WallpaperCache] Processing:', item.sourceFile.name);
         await this.generateThumbnail(item.sourceFile, item.destPath);
       } catch (e) {
         console.error(
@@ -233,7 +232,7 @@ export class WallpaperCache {
       } finally {
         this.processedItemsCount++;
         // recursive call to process next item
-        this.processQueue();
+        void this.processQueue();
       }
     }
   }
@@ -260,7 +259,7 @@ export class WallpaperCache {
 
     const bitmap = await this.decodeBitmap(blob, mime);
 
-    const canvas = document.createElement('canvas');
+    const canvas = activeDocument.createElement('canvas');
     canvas.width = THUMB_WIDTH;
     canvas.height = THUMB_HEIGHT;
     const ctx = canvas.getContext('2d');

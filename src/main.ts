@@ -17,7 +17,7 @@ import type {
 import { WallpaperCache } from './WallpaperCache';
 
 class DynamicWallpaperSettingTab extends PluginSettingTab {
-  component: any;
+  component: Record<string, unknown> | undefined;
   plugin: DynamicWallpaperPlugin;
 
   constructor(app: App, plugin: DynamicWallpaperPlugin) {
@@ -39,7 +39,7 @@ class DynamicWallpaperSettingTab extends PluginSettingTab {
 
   hide() {
     if (this.component) {
-      unmount(this.component);
+      void unmount(this.component);
     }
   }
 }
@@ -82,10 +82,10 @@ const TIER_META: Record<
 
 export default class DynamicWallpaperPlugin extends Plugin {
   settings: PluginSettings = DEFAULT_SETTINGS;
-  private opacityNoticeTimeout: NodeJS.Timeout | null = null;
+  private opacityNoticeTimeout: number | null = null;
   private currentWallpaper: TFile | null = null;
   private wallpaperCache!: WallpaperCache;
-  private syncDebounceTimer: NodeJS.Timeout | null = null;
+  private syncDebounceTimer: number | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -98,7 +98,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
     this.addSettingTab(new DynamicWallpaperSettingTab(this.app, this));
 
     // Initial Sync
-    this.syncWallpapers();
+    void this.syncWallpapers();
 
     this.registerEvent(
       this.app.vault.on('modify', (file) => this.handleFileEvent(file))
@@ -112,39 +112,39 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     this.addCommand({
       id: 'pick-random-wallpaper',
-      name: 'Pick Random Wallpaper',
+      name: 'Pick random wallpaper',
       callback: () => {
-        this.pickRandomWallpaper();
+        void this.pickRandomWallpaper();
       },
     });
 
     this.addCommand({
       id: 'view-related-wallpapers',
-      name: 'View Related Wallpapers',
+      name: 'View related wallpapers',
       callback: () => {
-        this.viewRelatedWallpapers();
+        void this.viewRelatedWallpapers();
       },
     });
 
     this.addCommand({
       id: 'pick-random-related-wallpaper',
-      name: 'Pick Random Related Wallpaper',
+      name: 'Pick random related wallpaper',
       callback: () => {
-        this.pickRandomRelatedWallpaper();
+        void this.pickRandomRelatedWallpaper();
       },
     });
 
     this.addCommand({
       id: 'choose-wallpaper',
-      name: 'Choose Wallpaper',
+      name: 'Choose wallpaper',
       callback: () => {
-        this.openWallpaperPicker();
+        void this.openWallpaperPicker();
       },
     });
 
     this.addCommand({
       id: 'clear-thumbnail-cache',
-      name: 'Clear Thumbnail Cache',
+      name: 'Clear thumbnail cache',
       callback: async () => {
         if (!this.wallpaperCache) {
           new Notice('Cache is not available.');
@@ -165,7 +165,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     this.addCommand({
       id: 'rebuild-thumbnail-cache',
-      name: 'Rebuild Thumbnail Cache',
+      name: 'Rebuild thumbnail cache',
       callback: async () => {
         if (!this.wallpaperCache) {
           new Notice('Cache is not available.');
@@ -191,7 +191,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     this.addCommand({
       id: 'increase-overlay-opacity',
-      name: 'Increase Overlay Opacity',
+      name: 'Increase overlay opacity',
       callback: () => {
         this.changeOverlayOpacity(0.05);
       },
@@ -199,7 +199,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     this.addCommand({
       id: 'decrease-overlay-opacity',
-      name: 'Decrease Overlay Opacity',
+      name: 'Decrease overlay opacity',
       callback: () => {
         this.changeOverlayOpacity(-0.05);
       },
@@ -207,7 +207,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     this.addCommand({
       id: 'set-current-wallpaper-to-note',
-      name: 'Set Current Wallpaper to Note',
+      name: 'Set current wallpaper to note',
       callback: async () => {
         const wallpaper = this.currentWallpaper;
         if (!wallpaper) {
@@ -219,7 +219,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
           try {
             await this.app.fileManager.processFrontMatter(
               activeFile,
-              (frontmatter) => {
+              (frontmatter: Record<string, unknown>) => {
                 frontmatter[this.settings.wallpaperProperty] = `[[${wallpaper.name}]]`;
               }
             );
@@ -236,7 +236,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     this.addCommand({
       id: 'refresh-wallpaper',
-      name: 'Refresh Wallpaper',
+      name: 'Refresh wallpaper',
       callback: () => {
         this.updateWallpaper();
       },
@@ -244,7 +244,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     this.addCommand({
       id: 'flip-current-wallpaper',
-      name: 'Flip Current Wallpaper (Horizontal)',
+      name: 'Flip current wallpaper (horizontal)',
       callback: async () => {
         if (!this.currentWallpaper) {
           new Notice('No wallpaper currently set.');
@@ -266,7 +266,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
           const bytes = await adapter.readBinary(this.currentWallpaper.path);
           const blob = new Blob([bytes]);
           const probe = await createImageBitmap(blob);
-          const canvas = document.createElement('canvas');
+          const canvas = activeDocument.createElement('canvas');
           canvas.width = probe.width;
           canvas.height = probe.height;
           const ctx = canvas.getContext('2d');
@@ -295,7 +295,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
           new Notice('Image flipped successfully!');
           // Wait a bit for the file system to settle and Obsidian to detect the change
-          setTimeout(() => {
+          window.setTimeout(() => {
             this.updateWallpaper();
           }, 500);
         } catch (err) {
@@ -326,7 +326,8 @@ export default class DynamicWallpaperPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
+    const loaded = (await this.loadData()) as Partial<PluginSettings> | null;
+    this.settings = { ...DEFAULT_SETTINGS, ...(loaded ?? {}) };
   }
 
   async saveSettings() {
@@ -334,29 +335,31 @@ export default class DynamicWallpaperPlugin extends Plugin {
     this.updateWallpaper(); // Update wallpaper immediately when settings change
   }
 
-  async syncWallpapers() {
+  syncWallpapers() {
     if (this.syncDebounceTimer) {
-      clearTimeout(this.syncDebounceTimer);
+      window.clearTimeout(this.syncDebounceTimer);
     }
 
-    this.syncDebounceTimer = setTimeout(async () => {
-      const { wallpapersPath } = this.settings;
-      const folder = this.app.vault.getAbstractFileByPath(wallpapersPath);
-      if (folder instanceof TFolder && this.wallpaperCache) {
-        await this.wallpaperCache.sync(folder);
-      }
-      this.syncDebounceTimer = null;
+    this.syncDebounceTimer = window.setTimeout(() => {
+      void (async () => {
+        const { wallpapersPath } = this.settings;
+        const folder = this.app.vault.getAbstractFileByPath(wallpapersPath);
+        if (folder instanceof TFolder && this.wallpaperCache) {
+          await this.wallpaperCache.sync(folder);
+        }
+        this.syncDebounceTimer = null;
+      })();
     }, 1000);
   }
 
-  async handleFileEvent(file: TAbstractFile) {
+  handleFileEvent(file: TAbstractFile) {
     if (file.path.startsWith(this.settings.wallpapersPath)) {
       this.syncWallpapers();
     }
   }
 
   changeOverlayOpacity(delta: number) {
-    const isDarkMode = document.body.classList.contains('theme-dark');
+    const isDarkMode = activeDocument.body.classList.contains('theme-dark');
     pluginSettings.update((settings) => {
       let newOpacity: number;
       if (isDarkMode) {
@@ -366,10 +369,10 @@ export default class DynamicWallpaperPlugin extends Plugin {
         newOpacity = Math.round(newOpacity * 100) / 100;
 
         if (this.opacityNoticeTimeout) {
-          clearTimeout(this.opacityNoticeTimeout);
+          window.clearTimeout(this.opacityNoticeTimeout);
         }
 
-        this.opacityNoticeTimeout = setTimeout(() => {
+        this.opacityNoticeTimeout = window.setTimeout(() => {
           new Notice(`Dark Mode Opacity: ${newOpacity}`);
         }, 500);
 
@@ -381,10 +384,10 @@ export default class DynamicWallpaperPlugin extends Plugin {
       newOpacity = Math.round(newOpacity * 100) / 100;
 
       if (this.opacityNoticeTimeout) {
-        clearTimeout(this.opacityNoticeTimeout);
+        window.clearTimeout(this.opacityNoticeTimeout);
       }
 
-      this.opacityNoticeTimeout = setTimeout(() => {
+      this.opacityNoticeTimeout = window.setTimeout(() => {
         new Notice(`Light Mode Opacity: ${newOpacity}`);
       }, 500);
 
@@ -406,17 +409,17 @@ export default class DynamicWallpaperPlugin extends Plugin {
           (file): file is TFile => file instanceof TFile && isImageFile(file)
         )
         .map((file) => ({
-          file: file as TFile,
+          file,
           url: this.wallpaperCache
-            ? this.wallpaperCache.getCachedUrl(file as TFile)
-            : this.app.vault.getResourcePath(file as TFile),
+            ? this.wallpaperCache.getCachedUrl(file)
+            : this.app.vault.getResourcePath(file),
         }));
 
       if (wallpapers.length > 0) {
         new WallpaperModal(this.app, wallpapers, (file) => {
           this.currentWallpaper = file;
           const wallpaperUrl = this.app.vault.getResourcePath(file);
-          document.body.style.setProperty(
+          activeDocument.body.style.setProperty(
             '--background-image',
             `url("${wallpaperUrl}")`
           );
@@ -500,14 +503,14 @@ export default class DynamicWallpaperPlugin extends Plugin {
       if (resolvedFile instanceof TFile) {
         this.currentWallpaper = resolvedFile;
         const wallpaperUrl = this.app.vault.getResourcePath(resolvedFile);
-        document.body.style.setProperty(
+        activeDocument.body.style.setProperty(
           '--background-image',
           `url("${wallpaperUrl}")`
         );
       } else {
         // Fallback: raw value didn't resolve to an attachment file.
         this.currentWallpaper = null;
-        document.body.style.setProperty(
+        activeDocument.body.style.setProperty(
           '--background-image',
           `url("${cleanResolved}")`
         );
@@ -546,7 +549,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
         if (target instanceof TFile) {
           const leaf = this.app.workspace.getLeaf(false);
           if (leaf) {
-            leaf.openFile(target);
+            void leaf.openFile(target);
           }
         }
       },
@@ -562,7 +565,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
         // Same handler the picker uses: track the new current, apply it.
         this.currentWallpaper = file;
         const wallpaperUrl = this.app.vault.getResourcePath(file);
-        document.body.style.setProperty(
+        activeDocument.body.style.setProperty(
           '--background-image',
           `url("${wallpaperUrl}")`,
         );
@@ -624,7 +627,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     this.currentWallpaper = picked;
     const wallpaperUrl = this.app.vault.getResourcePath(picked);
-    document.body.style.setProperty(
+    activeDocument.body.style.setProperty(
       '--background-image',
       `url("${wallpaperUrl}")`
     );
@@ -642,7 +645,9 @@ export default class DynamicWallpaperPlugin extends Plugin {
     // Tier 1: direct frontmatter on the active note itself.
     const direct = this.collectTierWallpapers(targetFile, 'direct', () => {
       const meta = this.app.metadataCache.getFileCache(targetFile);
-      const wp = meta?.frontmatter?.[this.settings.wallpaperProperty];
+      const wp = meta?.frontmatter?.[this.settings.wallpaperProperty] as
+        | string
+        | undefined;
       return wp ? [{ link: wp }] : [];
     });
     groups.push(direct);
@@ -764,10 +769,10 @@ export default class DynamicWallpaperPlugin extends Plugin {
       if (!sourceFile) continue;
 
       // The actual wallpaper value comes from the source note's frontmatter.
-      const wallpaperValue = isBacklinkTier
-        ? this.app.metadataCache.getFileCache(sourceFile)?.frontmatter?.[
+      const wallpaperValue: string | undefined = isBacklinkTier
+        ? (this.app.metadataCache.getFileCache(sourceFile)?.frontmatter?.[
             this.settings.wallpaperProperty
-          ]
+          ] as string | undefined)
         : this.readWallpaperFromLinkedNote(entry.link, sourceFile.path);
 
       if (!wallpaperValue) continue;
@@ -826,7 +831,9 @@ export default class DynamicWallpaperPlugin extends Plugin {
     );
     if (!linkedFile) return undefined;
     const linkedMeta = this.app.metadataCache.getFileCache(linkedFile);
-    return linkedMeta?.frontmatter?.[this.settings.wallpaperProperty];
+    return linkedMeta?.frontmatter?.[this.settings.wallpaperProperty] as
+      | string
+      | undefined;
   }
 
   /**
@@ -881,7 +888,9 @@ export default class DynamicWallpaperPlugin extends Plugin {
       );
       if (linkedFile) {
         const linkedMeta = this.app.metadataCache.getFileCache(linkedFile);
-        const wp = linkedMeta?.frontmatter?.[this.settings.wallpaperProperty];
+        const wp = linkedMeta?.frontmatter?.[this.settings.wallpaperProperty] as
+          | string
+          | undefined;
         if (wp) return wp;
       }
     }
@@ -896,7 +905,9 @@ export default class DynamicWallpaperPlugin extends Plugin {
    */
   private resolveWallpaperForFile(targetFile: TFile): string | undefined {
     const metadata = this.app.metadataCache.getFileCache(targetFile);
-    let wallpaper = metadata?.frontmatter?.[this.settings.wallpaperProperty];
+    let wallpaper: string | undefined = metadata?.frontmatter?.[
+      this.settings.wallpaperProperty
+    ] as string | undefined;
 
     if (!wallpaper && this.settings.inheritanceProperty) {
       const fmLinks = (metadata?.frontmatterLinks ?? [])
@@ -932,11 +943,11 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
   private updateWallpaper() {
     // Update overlay opacity CSS variables
-    document.body.style.setProperty(
+    activeDocument.body.style.setProperty(
       '--background-overlay-opacity-light',
       this.settings.overlayOpacityLight.toString()
     );
-    document.body.style.setProperty(
+    activeDocument.body.style.setProperty(
       '--background-overlay-opacity-dark',
       this.settings.overlayOpacityDark.toString()
     );
@@ -959,20 +970,20 @@ export default class DynamicWallpaperPlugin extends Plugin {
       if (wallpaperFile) {
         this.currentWallpaper = wallpaperFile;
         const wallpaperUrl = this.app.vault.getResourcePath(wallpaperFile);
-        document.body.style.setProperty(
+        activeDocument.body.style.setProperty(
           '--background-image',
           `url("${wallpaperUrl}")`
         );
       } else {
         // Fallback to original value if not found as attachment
-        document.body.style.setProperty(
+        activeDocument.body.style.setProperty(
           '--background-image',
           `url("${cleanWallpaper}")`
         );
       }
     } else if (!this.settings.keepExistingWallpaper) {
       this.currentWallpaper = null;
-      document.body.style.removeProperty('--background-image');
+      activeDocument.body.style.removeProperty('--background-image');
     }
   }
 }

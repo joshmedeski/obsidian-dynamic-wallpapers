@@ -37,6 +37,6 @@ export function initStore(p: DynamicWallpaperPlugin) {
 pluginSettings.subscribe((value) => {
   if (plugin) {
     plugin.settings = value;
-    plugin.saveSettings();
+    void plugin.saveSettings();
   }
 });
