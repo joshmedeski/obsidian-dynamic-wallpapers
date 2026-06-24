@@ -70,21 +70,21 @@ Releases are driven by pushing a version tag:
 #    the script first).
 # 2. Commit the version bump on main.
 # 3. Tag and push.
-git tag v<version>
-git push origin v<version>
+git tag <version>
+git push origin <version>
 ```
 
 `.github/workflows/release.yml` then:
 
-1. Validates the tag version (e.g. `v1.2.3`) matches `public/manifest.json` `version`. If not, the job fails with a clear message.
+1. Validates the tag version (e.g. `1.2.3`) matches `public/manifest.json` `version`. If not, the job fails with a clear message.
 2. Runs `npm run check` and `npm run build`.
 3. Verifies the three release artifacts exist.
 4. Uses `softprops/action-gh-release@v2` with `generate_release_notes: true` to create a GitHub release. GitHub automatically appends the changelog (PRs, commits, contributors) since the previous tag.
 5. Attaches `main.js`, `manifest.json`, `styles.css`, and `versions.json` to the release.
 
-Tag names containing `-` (e.g. `v1.2.0-beta.1`) are marked as pre-releases. Plain `vX.Y.Z` tags publish as full releases.
+Tag names containing `-` (e.g. `1.2.0-beta.1`) are marked as pre-releases. Plain `X.Y.Z` tags publish as full releases.
 
-The workflow cannot be triggered manually from the Actions tab — it only fires on `v*` tag pushes. This is intentional: it keeps the "release" label meaningful and avoids accidental publishes.
+The workflow cannot be triggered manually from the Actions tab — it only fires on `X.Y.Z` tag pushes. This is intentional: it keeps the "release" label meaningful and avoids accidental publishes.
 
 ### Driving releases from inside pi
 
@@ -109,8 +109,8 @@ This complements (does not replace) the tag-push workflow above. The typical seq
 # Back at the terminal:
 # Bump public/manifest.json and versions.json
 git commit -am "chore: bump version to 1.0.1"
-git tag v1.0.1
-git push origin v1.0.1     # → release.yml publishes the real release
+git tag 1.0.1
+git push origin 1.0.1     # → release.yml publishes the real release
 ```
 
 The pi-side preview lets you catch changelog issues **before** the public release goes out.
