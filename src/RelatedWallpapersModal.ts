@@ -1,21 +1,30 @@
-import { type App, Modal } from 'obsidian';
+import { type App, Modal, type TFile } from 'obsidian';
 import { mount, unmount } from 'svelte';
 import RelatedWallpapersList from './RelatedWallpapersList.svelte';
-import type { RelatedWallpaperGroup } from './RelatedWallpapersList.types';
+import type {
+  RelatedWallpaperGroup,
+  RelatedWallpaperItem,
+} from './RelatedWallpapersList.types';
 
 export class RelatedWallpapersModal extends Modal {
   private component: any;
   private groups: RelatedWallpaperGroup[];
-  private onSelect: (sourcePath: string) => void;
+  private onSelectSource: (sourcePath: string) => void;
+  private onSelectWallpaper: (
+    item: RelatedWallpaperItem,
+    file: TFile | null,
+  ) => void;
 
   constructor(
     app: App,
     groups: RelatedWallpaperGroup[],
-    onSelect: (sourcePath: string) => void
+    onSelectSource: (sourcePath: string) => void,
+    onSelectWallpaper: (item: RelatedWallpaperItem, file: TFile | null) => void
   ) {
     super(app);
     this.groups = groups;
-    this.onSelect = onSelect;
+    this.onSelectSource = onSelectSource;
+    this.onSelectWallpaper = onSelectWallpaper;
   }
 
   onOpen() {
@@ -32,7 +41,11 @@ export class RelatedWallpapersModal extends Modal {
       props: {
         groups: this.groups,
         onSelectSource: (sourcePath: string) => {
-          this.onSelect(sourcePath);
+          this.onSelectSource(sourcePath);
+          this.close();
+        },
+        onSelectWallpaper: (item: RelatedWallpaperItem, file: TFile | null) => {
+          this.onSelectWallpaper(item, file);
           this.close();
         },
       },

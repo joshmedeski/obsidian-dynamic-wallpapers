@@ -1,16 +1,4 @@
-import { exec } from 'child_process';
-import { readFileSync, unlinkSync, writeFileSync } from 'fs';
-import {
-  type App,
-  FileSystemAdapter,
-  MetadataCache,
-  Notice,
-  Plugin,
-  PluginSettingTab,
-  TFile,
-  TFolder,
-  type TAbstractFile,
-} from 'obsidian';
+import { type App, FileSystemAdapter, MetadataCache, Notice, Plugin, PluginSettingTab, TFile, TFolder, type TAbstractFile } from 'obsidian';
 import { mount, unmount } from 'svelte';
 import SettingsTab from './SettingsTab.svelte';
 import {
@@ -104,11 +92,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
     initStore(this);
 
     if (this.manifest.dir) {
-      this.wallpaperCache = new WallpaperCache(
-        this.app,
-        this.manifest.dir,
-        this.settings.ffmpegPath
-      );
+      this.wallpaperCache = new WallpaperCache(this.app, this.manifest.dir);
     }
 
     this.addSettingTab(new DynamicWallpaperSettingTab(this.app, this));
@@ -155,6 +139,53 @@ export default class DynamicWallpaperPlugin extends Plugin {
       name: 'Choose Wallpaper',
       callback: () => {
         this.openWallpaperPicker();
+      },
+    });
+
+    this.addCommand({
+      id: 'clear-thumbnail-cache',
+      name: 'Clear Thumbnail Cache',
+      callback: async () => {
+        if (!this.wallpaperCache) {
+          new Notice('Cache is not available.');
+          return;
+        }
+        const removed = this.wallpaperCache.clearCache();
+        if (removed === 0) {
+          new Notice('Thumbnail cache is already empty.');
+        } else {
+          new Notice(`Cleared ${removed} thumbnail${removed === 1 ? '' : 's'}.`);
+        }
+        // The picker (and related modals) call getCachedUrl() on every
+        // render, which falls back to the original resource path when no
+        // cache file exists — so open dialogs immediately reflect the
+        // cleared state without us doing anything else.
+      },
+    });
+
+    this.addCommand({
+      id: 'rebuild-thumbnail-cache',
+      name: 'Rebuild Thumbnail Cache',
+      callback: async () => {
+        if (!this.wallpaperCache) {
+          new Notice('Cache is not available.');
+          return;
+        }
+        const folder = this.getWallpapersFolder();
+        if (!folder) {
+          new Notice('Wallpaper directory not found.');
+          return;
+        }
+        // rebuildCache() clears first, then re-syncs. It returns the
+        // number of items queued so we can skip the Notice when the
+        // source folder has no images (nothing to rebuild).
+        const queued = await this.wallpaperCache.rebuildCache(folder);
+        if (queued === 0) {
+          new Notice('No images to cache in the wallpapers folder.');
+        }
+        // When queued > 0, WallpaperCache's own progress Notice ("Generating
+        // thumbnails: 0/N") already communicates what's happening, so we
+        // intentionally don't pile a second Notice on top.
       },
     });
 
@@ -214,7 +245,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
     this.addCommand({
       id: 'flip-current-wallpaper',
       name: 'Flip Current Wallpaper (Horizontal)',
-      callback: () => {
+      callback: async () => {
         if (!this.currentWallpaper) {
           new Notice('No wallpaper currently set.');
           return;
@@ -226,35 +257,51 @@ export default class DynamicWallpaperPlugin extends Plugin {
           return;
         }
 
-        const absolutePath = adapter.getFullPath(this.currentWallpaper.path);
-        const tempPath = `${absolutePath}.temp.${this.currentWallpaper.extension}`;
-        const ffmpegPath = this.settings.ffmpegPath || 'ffmpeg';
-
-        const command = `"${ffmpegPath}" -i "${absolutePath}" -vf hflip -y "${tempPath}"`;
-
-        exec(command, (error, stdout, stderr) => {
-          if (error) {
-            console.error(`exec error: ${error}`);
-            new Notice(
-              `Error flipping image. Is ffmpeg installed and the path correct? (${ffmpegPath})`
-            );
+        try {
+          // Read source into memory, decode, draw mirrored into a canvas,
+          // then write the resulting bytes back through the vault adapter.
+          // This mirrors the original ffmpeg-based flip behavior — the
+          // source image is overwritten in place — without needing an
+          // external binary.
+          const bytes = await adapter.readBinary(this.currentWallpaper.path);
+          const blob = new Blob([bytes]);
+          const probe = await createImageBitmap(blob);
+          const canvas = document.createElement('canvas');
+          canvas.width = probe.width;
+          canvas.height = probe.height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            new Notice('Failed to acquire canvas context.');
+            probe.close();
             return;
           }
+          // Mirror: translate, then scale x by -1, then draw the image
+          // at its negative width so the unflipped original lands
+          // reflected on the canvas.
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(probe, 0, 0);
+          probe.close();
 
-          try {
-            const data = readFileSync(tempPath);
-            writeFileSync(absolutePath, data);
-            unlinkSync(tempPath);
-            new Notice('Image flipped successfully!');
-            // Wait a bit for the file system to settle and Obsidian to detect the change
-            setTimeout(() => {
-              this.updateWallpaper();
-            }, 500);
-          } catch (err) {
-            console.error('Error copying/cleaning up file:', err);
-            new Notice('Error updating image file.');
+          const flipped = await new Promise<Blob | null>((resolve) =>
+            canvas.toBlob(resolve, 'image/png')
+          );
+          if (!flipped) {
+            new Notice('Failed to encode flipped image.');
+            return;
           }
-        });
+          const arrayBuffer = await flipped.arrayBuffer();
+          await adapter.writeBinary(this.currentWallpaper.path, arrayBuffer);
+
+          new Notice('Image flipped successfully!');
+          // Wait a bit for the file system to settle and Obsidian to detect the change
+          setTimeout(() => {
+            this.updateWallpaper();
+          }, 500);
+        } catch (err) {
+          console.error('Error flipping image:', err);
+          new Notice('Error flipping image.');
+        }
       },
     });
 
@@ -284,9 +331,6 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
-    if (this.wallpaperCache) {
-      this.wallpaperCache.updateSettings(this.settings.ffmpegPath);
-    }
     this.updateWallpaper(); // Update wallpaper immediately when settings change
   }
 
@@ -385,6 +429,19 @@ export default class DynamicWallpaperPlugin extends Plugin {
     }
   }
 
+  /**
+   * Resolve the configured Wallpapers Directory to a TFolder. Used by the
+   * cache-management commands (Clear / Rebuild) to know which source folder
+   * to operate against. Returns null when the path is missing or doesn't
+   * point at a folder — callers should surface a Notice in that case.
+   */
+  private getWallpapersFolder(): TFolder | null {
+    const folder = this.app.vault.getAbstractFileByPath(
+      this.settings.wallpapersPath
+    );
+    return folder instanceof TFolder ? folder : null;
+  }
+
   async pickRandomWallpaper() {
     // "Pick random wallpaper" picks a random *backlink note* of the active
     // file and resolves that note's wallpaper through the same priority
@@ -481,15 +538,37 @@ export default class DynamicWallpaperPlugin extends Plugin {
       return;
     }
 
-    new RelatedWallpapersModal(this.app, groups, (sourcePath) => {
-      const target = this.app.vault.getAbstractFileByPath(sourcePath);
-      if (target instanceof TFile) {
-        const leaf = this.app.workspace.getLeaf(false);
-        if (leaf) {
-          leaf.openFile(target);
+    new RelatedWallpapersModal(
+      this.app,
+      groups,
+      (sourcePath) => {
+        const target = this.app.vault.getAbstractFileByPath(sourcePath);
+        if (target instanceof TFile) {
+          const leaf = this.app.workspace.getLeaf(false);
+          if (leaf) {
+            leaf.openFile(target);
+          }
         }
-      }
-    }).open();
+      },
+      (item, file) => {
+        if (!file) {
+          // The card was clicked but its raw frontmatter value didn't
+          // resolve to an attachment in the vault — there's nothing we
+          // can put on screen. Surface a Notice so the click isn't
+          // silently swallowed.
+          new Notice(`Couldn't resolve "${item.rawValue}" to a file.`);
+          return;
+        }
+        // Same handler the picker uses: track the new current, apply it.
+        this.currentWallpaper = file;
+        const wallpaperUrl = this.app.vault.getResourcePath(file);
+        document.body.style.setProperty(
+          '--background-image',
+          `url("${wallpaperUrl}")`,
+        );
+        new Notice(`Wallpaper set to ${file.name}`);
+      },
+    ).open();
   }
 
   async pickRandomRelatedWallpaper() {
