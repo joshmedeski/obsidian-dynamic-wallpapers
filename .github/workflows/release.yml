@@ -29,10 +29,10 @@ jobs:
       - name: Validate tag matches manifest version
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          MANIFEST_VERSION="$(node -p "require('./public/manifest.json').version")"
+          MANIFEST_VERSION="$(node -p "require('./manifest.json').version")"
           if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
-            echo "::error::Tag version ($TAG_VERSION) does not match public/manifest.json version ($MANIFEST_VERSION)."
-            echo "Bump the version in public/manifest.json (and versions.json) before tagging."
+            echo "::error::Tag version ($TAG_VERSION) does not match manifest.json version ($MANIFEST_VERSION)."
+            echo "Bump the version in manifest.json (and versions.json) before tagging."
             exit 1
           fi
           echo "Tag $TAG_VERSION matches manifest.json."

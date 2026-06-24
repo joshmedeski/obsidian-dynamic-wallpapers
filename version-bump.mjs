@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'fs';
 
 const targetVersion = process.env.npm_package_version;
 
-const manifestPath = 'public/manifest.json';
+const manifestPath = 'manifest.json';
 const versionsPath = 'versions.json';
 
 // read minAppVersion from manifest.json and bump version to target version

@@ -13,7 +13,7 @@ if you want to view the source, please visit the github repository of this plugi
 
 mkdirSync('./build', { recursive: true });
 
-copyFileSync('./public/manifest.json', './build/manifest.json');
+copyFileSync('./manifest.json', './build/manifest.json');
 copyFileSync('./public/styles.css', './build/styles.css');
 
 const prod = process.argv[2] === 'production';
