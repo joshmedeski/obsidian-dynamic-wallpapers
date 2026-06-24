@@ -41,85 +41,40 @@ This plugin isn't in the Obsidian Community Plugins directory yet, so install it
 
 All commands are available from the Command Palette (`Cmd/Ctrl + P`).
 
-### Choose Wallpaper
+- **Choose Wallpaper:** Open a visual gallery of every image in the Wallpapers Directory and click a thumbnail to apply it.
+- **Pick Random Wallpaper:** Apply a random backlink's wallpaper (resolved through the full inheritance chain), skipping the one already on screen.
+- **View Related Wallpapers:** Open a modal listing every wallpaper that could apply to the active note, grouped by inheritance tier.
+- **Pick Random Related Wallpaper:** Apply a random wallpaper from the related set only, skipping the one already on screen.
+- **Increase Overlay Opacity:** Raise the active theme's overlay opacity by 0.05.
+- **Decrease Overlay Opacity:** Lower the active theme's overlay opacity by 0.05.
+- **Set Current Wallpaper to Note:** Write the wallpaper currently on screen into the active note's frontmatter as a wiki link.
+- **Refresh Wallpaper:** Re-run the full wallpaper resolution pipeline for the active note.
+- **Clear Thumbnail Cache:** Delete every file in the plugin's `.cache` directory.
+- **Rebuild Thumbnail Cache:** Wipe the cache and regenerate a thumbnail for every image in the Wallpapers Directory.
+- **Flip Current Wallpaper (Horizontal):** Mirror the current wallpaper image in place (overwrites the source file — no undo).
 
-Opens a visual gallery of every image in the **Wallpapers Directory** (and any subfolders), with thumbnail previews. Click a thumbnail to apply that wallpaper immediately. No selection is saved — the wallpaper is applied for the current session but not written to any frontmatter.
+## Related wallpapers & inheritance
 
-- **Requires**: a valid Wallpapers Directory containing at least one image.
-- **No-op when**: the directory is missing, empty, or contains no images with a recognized extension (see *Supported image formats* below).
+A note doesn't have to set its own wallpaper. When the active note has no direct `wallpaper` frontmatter property, the plugin resolves one by following the note's links — so a wallpaper set on one note can cascade to everything connected to it.
 
-### Pick Random Wallpaper
+### Resolution order
 
-Picks a random **backlink** of the active note and applies that backlink's wallpaper (resolved through the full inheritance priority chain). The wallpaper currently on screen is skipped — if every backlink resolves to the wallpaper already displayed, or no backlinks have a wallpaper at all, the command leaves the current wallpaper untouched and shows a Notice.
+The plugin walks these tiers in order and applies the **first** wallpaper it finds (first match wins):
 
-- **Requires**: an active note with at least one backlink that resolves to a wallpaper.
-- **No-op when**: there is no active note, there are no backlinks, or every backlink resolves to the current wallpaper (or has no wallpaper).
+1. **Direct** — a wallpaper set on the active note itself via the configured *Wallpaper Property*.
+2. **Inheritance Property** — frontmatter outlinks of the property named in *Inheritance Property* (e.g., an `areas:` list).
+3. **Frontmatter Links** — every other wiki link found anywhere in the frontmatter.
+4. **Body Links** — wiki links in the note body, with the **last** link checked first.
+5. **Backlinks** — notes that link *to* the active note. Each backlink is resolved through its own priority chain; the first backlink that yields a wallpaper wins.
 
-### View Related Wallpapers
+Tiers 2–5 can each be toggled off in [Settings](#settings). A backlink of a backlink (transitive backlinks) is **not** followed — only direct backlinks of the active note are checked.
 
-Opens a modal listing **every** wallpaper that could possibly apply to the active note, grouped by inheritance tier:
+### The "related" set
 
-1. **Direct** — wallpapers set on the active note itself via the configured frontmatter property.
-2. **Inheritance Property** — wallpapers on notes linked from the configured *Inheritance Property* frontmatter key.
-3. **Frontmatter Links** — wallpapers on notes linked from any other frontmatter property.
-4. **Body Links** — wallpapers on notes linked inline in the note body (the **last** body link is checked first, matching resolution behavior).
-5. **Backlinks** — wallpapers on notes that link *to* the active note.
+The **related** set is the full collection of wallpapers reachable through every enabled tier above, deduplicated by resolved file path. Two commands operate on it:
 
-Each card shows a thumbnail, the source note's name, and which tier produced it. **Click a card to set that wallpaper as the current wallpaper and close the modal** (the same behavior as the picker). Click the small `↗ source-name` link inside a card to open the source note in a new leaf instead. Cards whose raw frontmatter value didn't resolve to a file surface a Notice on click. Tiers with no wallpapers are hidden.
-
-- **Requires**: an active note.
-- **No-op when**: no related wallpapers are found for the active note.
-
-### Pick Random Related Wallpaper
-
-Picks a random wallpaper from the **same pool** that *View Related Wallpapers* displays — i.e., the entire inheritance set, deduplicated by resolved file path. The wallpaper currently on screen is skipped.
-
-Unlike *Pick Random Wallpaper*, this command is **isolated to the related set**: it never falls back to anything outside of it. If the related pool is empty, or every candidate resolves to the wallpaper already on screen, the command leaves the current wallpaper untouched and shows a Notice.
-
-- **Requires**: an active note with at least one related wallpaper that differs from the current one.
-- **No-op when**: there is no active note, there are no related wallpapers, or the only related wallpaper is already on screen.
-
-### Increase Overlay Opacity / Decrease Overlay Opacity
-
-Adjusts the overlay opacity for the **active theme** by 0.05 per press (range 0-1, clamped and rounded to two decimals). The active note's wallpaper updates immediately. A Notice shows the new opacity value 500ms after the last change.
-
-- **Requires**: nothing. Works on any active note.
-
-### Set Current Wallpaper to Note
-
-Writes the wallpaper currently displayed on screen into the active note's frontmatter, using the configured wallpaper property name. The value is written as a wiki link (`[[filename.ext]]`) so it round-trips with Obsidian's autocomplete and rename refactoring.
-
-- **Requires**: an active note AND a wallpaper currently displayed (i.e., one was set via Choose Wallpaper, Pick Random, Refresh, etc.). If you navigated to a note whose wallpaper was resolved via inheritance and never explicitly selected, `currentWallpaper` may not reflect the visible image — pick it again via Choose Wallpaper first if needed.
-- **No-op when**: there is no active file, or no wallpaper is currently set.
-
-### Refresh Wallpaper
-
-Re-runs the full wallpaper resolution pipeline for the active note. Useful after you've changed frontmatter on a linked note, or if you suspect the inheritance cache is stale. The result is the same wallpaper that would be resolved on a fresh page load.
-
-- **Requires**: an active note.
-
-### Clear Thumbnail Cache
-
-Deletes every file in the plugin's `.cache` directory. The picker, related-wallpapers modal, and any other view that displays cached thumbnails immediately fall back to the original full-size images; new thumbnails regenerate on the next sync (triggered by the usual file-create/modify events, or manually via *Rebuild Thumbnail Cache*).
-
-- **Requires**: nothing.
-- **No-op when**: the cache directory is already empty (a Notice reports this).
-
-### Rebuild Thumbnail Cache
-
-Wipes the cache directory and re-syncs against the configured Wallpapers Directory, regenerating a thumbnail for every image. Use this if thumbnails look wrong (stale file extension, broken mtime keying, or just a fresh start after editing source files outside Obsidian). A progress Notice (`Generating thumbnails: N/M`) reports status while the rebuild runs.
-
-- **Requires**: a valid Wallpapers Directory.
-- **No-op when**: the directory is missing, or contains no images with a recognized extension.
-
-### Flip Current Wallpaper (Horizontal)
-
-Mirrors the current wallpaper image in place using the browser's canvas API. The image file is **overwritten** — there is no undo. After flipping, the wallpaper refreshes automatically.
-
-> ⚠️ **This command overwrites the source image file in place.** Make a backup first if the original matters. Do not run it on a wallpaper that's stored outside the vault (e.g., a remote attachment that exists only by reference).
-
-- **Requires**: a wallpaper currently set as the plugin's `currentWallpaper`.
-- **No-op when**: no wallpaper is currently set, or the source file fails to decode.
+- **View Related Wallpapers** opens a modal listing every wallpaper in the set, grouped by the tier that produced it. Each card shows a thumbnail, the source note's name, and its tier. Click a card to apply that wallpaper; click the small `↗ source-name` link to open the source note in a new leaf instead. Tiers with no wallpapers are hidden.
+- **Pick Random Related Wallpaper** applies a random wallpaper from this same set, skipping the one already on screen. Unlike *Pick Random Wallpaper* (which only considers backlinks), it never falls back outside the related set.
 
 ## Settings
 
@@ -134,18 +89,8 @@ Mirrors the current wallpaper image in place using the browser's canvas API. The
 | Inherit from backlinks | `true` | Check notes that link TO the active note for a wallpaper (priority 5, lowest) |
 | Overlay Opacity (Light Mode) | `0.8` | Overlay opacity in light mode (0-1) |
 | Overlay Opacity (Dark Mode) | `0.6` | Overlay opacity in dark mode (0-1) |
-| Boost text legibility at low opacity | `true` | When the active theme's overlay opacity drops below 0.2, apply a soft text shadow on body text so it stays readable while the wallpaper shows through. Black halo in light mode, white halo in dark mode. |
 
-### Wallpaper inheritance priority
-
-When a note has no direct `wallpaper` frontmatter property, the plugin looks for one in this order (first match wins):
-
-1. **Inheritance Property** — frontmatter outlinks of the property named in *Inheritance Property* (e.g., an `areas:` list in the example).
-2. **All frontmatter links** — every wiki link found anywhere in the frontmatter.
-3. **Body links** — wiki links in the note body, with the **last** link checked first.
-4. **Backlinks** — notes that link *to* this one. Each backlink is resolved through its own priority chain; the first backlink that yields a wallpaper wins.
-
-Any of these steps can be disabled via the corresponding setting. A backlink of a backlink (transitive backlinks) is **not** followed — only direct backlinks of the active note are checked.
+For how the inheritance settings interact, see [Related wallpapers & inheritance](#related-wallpapers--inheritance) above.
 
 ### Supported image formats
 
