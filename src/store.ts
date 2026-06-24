@@ -10,6 +10,7 @@ export interface PluginSettings {
   inheritanceProperty: string;
   inheritFromFrontmatterLinks: boolean;
   inheritFromBodyLinks: boolean;
+  inheritFromBacklinks: boolean;
   keepExistingWallpaper: boolean;
 }
 
@@ -22,6 +23,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   inheritanceProperty: "",
   inheritFromFrontmatterLinks: true,
   inheritFromBodyLinks: true,
+  inheritFromBacklinks: true,
   keepExistingWallpaper: true,
 };
 

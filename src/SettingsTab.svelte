@@ -20,11 +20,13 @@
   let inheritanceProperty = $pluginSettings.inheritanceProperty;
   let inheritFromFrontmatterLinks = $pluginSettings.inheritFromFrontmatterLinks;
   let inheritFromBodyLinks = $pluginSettings.inheritFromBodyLinks;
+  let inheritFromBacklinks = $pluginSettings.inheritFromBacklinks;
   let keepExistingWallpaper = $pluginSettings.keepExistingWallpaper;
 
   $: inheritanceProperty = $pluginSettings.inheritanceProperty;
   $: inheritFromFrontmatterLinks = $pluginSettings.inheritFromFrontmatterLinks;
   $: inheritFromBodyLinks = $pluginSettings.inheritFromBodyLinks;
+  $: inheritFromBacklinks = $pluginSettings.inheritFromBacklinks;
   $: keepExistingWallpaper = $pluginSettings.keepExistingWallpaper;
 
   let suggestions: string[] = [];
@@ -234,6 +236,11 @@
     pluginSettings.update((s) => ({ ...s, inheritFromBodyLinks: target.checked }));
   }
 
+  function updateInheritFromBacklinks(e: Event) {
+    const target = e.target as HTMLInputElement;
+    pluginSettings.update((s) => ({ ...s, inheritFromBacklinks: target.checked }));
+  }
+
   function updateOverlayOpacityLight(e: Event) {
     const target = e.target as HTMLInputElement;
     pluginSettings.update((s) => ({
@@ -429,6 +436,29 @@
               pluginSettings.update((s) => ({
                 ...s,
                 inheritFromBodyLinks: !s.inheritFromBodyLinks,
+              }));
+            }}
+          ></div>
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-item-info">
+          <div class="setting-item-name">Inherit from backlinks</div>
+          <div class="setting-item-description">
+            After all outgoing link sources are exhausted, check notes that link
+            <em>to</em> this one for a wallpaper. This is the lowest priority.
+          </div>
+        </div>
+        <div class="setting-item-control">
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <!-- svelte-ignore a11y-no-static-element-interactions -->
+          <div
+            class="checkbox-container{inheritFromBacklinks ? ' is-enabled' : ''}"
+            on:click={() => {
+              pluginSettings.update((s) => ({
+                ...s,
+                inheritFromBacklinks: !s.inheritFromBacklinks,
               }));
             }}
           ></div>
