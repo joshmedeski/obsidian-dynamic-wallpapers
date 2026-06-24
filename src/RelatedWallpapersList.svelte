@@ -8,6 +8,10 @@
 
   export let groups: RelatedWallpaperGroup[] = [];
   export let onSelectSource: (sourcePath: string) => void = () => {};
+  export let onSelectWallpaper: (
+    item: RelatedWallpaperItem,
+    file: TFile | null,
+  ) => void = () => {};
 
   let searchTerm = "";
   let debouncedSearchTerm = "";
@@ -52,6 +56,25 @@
     event.stopPropagation();
     onSelectSource(sourcePath);
   }
+
+  function handleSelectWallpaper(
+    event: MouseEvent,
+    item: RelatedWallpaperItem,
+  ) {
+    // The source-link is a child of the card; its click handler already
+    // stops propagation so we never get here for that case. Defensive
+    // guard anyway in case the markup changes.
+    if ((event.target as HTMLElement | null)?.closest(".source-link")) {
+      return;
+    }
+    if (!item.wallpaperFile) {
+      // Raw frontmatter value didn't resolve to an attachment — there's
+      // no file to apply. The parent modal will surface a Notice.
+      onSelectWallpaper(item, null);
+      return;
+    }
+    onSelectWallpaper(item, item.wallpaperFile);
+  }
 </script>
 
 <div class="related-wallpapers">
@@ -90,7 +113,13 @@
           </header>
           <div class="wallpaper-grid">
             {#each group.items as item (item.rawValue + "|" + item.sourcePath)}
-              <div class="wallpaper-card">
+              <!-- svelte-ignore a11y-click-events-have-key-events -->
+              <!-- svelte-ignore a11y-no-static-element-interactions -->
+              <div
+                class="wallpaper-card"
+                title={`Set ${item.displayName} as the current wallpaper`}
+                on:click={(e) => handleSelectWallpaper(e, item)}
+              >
                 <div class="image-container">
                   {#if item.url}
                     <img src={item.url} alt={item.displayName} />
@@ -206,6 +235,7 @@
     border-radius: 8px;
     background-color: var(--background-secondary);
     overflow: hidden;
+    cursor: pointer;
     transition:
       transform 0.15s ease,
       box-shadow 0.15s ease;

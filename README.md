@@ -65,7 +65,7 @@ Opens a modal listing **every** wallpaper that could possibly apply to the activ
 4. **Body Links** — wallpapers on notes linked inline in the note body (the **last** body link is checked first, matching resolution behavior).
 5. **Backlinks** — wallpapers on notes that link *to* the active note.
 
-Each card shows a thumbnail, the source note's name, and which tier produced it. Clicking a card opens the source note in a new leaf. Tiers with no wallpapers are hidden.
+Each card shows a thumbnail, the source note's name, and which tier produced it. **Click a card to set that wallpaper as the current wallpaper and close the modal** (the same behavior as the picker). Click the small `↗ source-name` link inside a card to open the source note in a new leaf instead. Cards whose raw frontmatter value didn't resolve to a file surface a Notice on click. Tiers with no wallpapers are hidden.
 
 - **Requires**: an active note.
 - **No-op when**: no related wallpapers are found for the active note.

@@ -538,15 +538,37 @@ export default class DynamicWallpaperPlugin extends Plugin {
       return;
     }
 
-    new RelatedWallpapersModal(this.app, groups, (sourcePath) => {
-      const target = this.app.vault.getAbstractFileByPath(sourcePath);
-      if (target instanceof TFile) {
-        const leaf = this.app.workspace.getLeaf(false);
-        if (leaf) {
-          leaf.openFile(target);
+    new RelatedWallpapersModal(
+      this.app,
+      groups,
+      (sourcePath) => {
+        const target = this.app.vault.getAbstractFileByPath(sourcePath);
+        if (target instanceof TFile) {
+          const leaf = this.app.workspace.getLeaf(false);
+          if (leaf) {
+            leaf.openFile(target);
+          }
         }
-      }
-    }).open();
+      },
+      (item, file) => {
+        if (!file) {
+          // The card was clicked but its raw frontmatter value didn't
+          // resolve to an attachment in the vault — there's nothing we
+          // can put on screen. Surface a Notice so the click isn't
+          // silently swallowed.
+          new Notice(`Couldn't resolve "${item.rawValue}" to a file.`);
+          return;
+        }
+        // Same handler the picker uses: track the new current, apply it.
+        this.currentWallpaper = file;
+        const wallpaperUrl = this.app.vault.getResourcePath(file);
+        document.body.style.setProperty(
+          '--background-image',
+          `url("${wallpaperUrl}")`,
+        );
+        new Notice(`Wallpaper set to ${file.name}`);
+      },
+    ).open();
   }
 
   async pickRandomRelatedWallpaper() {
