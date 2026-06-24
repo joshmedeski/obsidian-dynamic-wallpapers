@@ -150,7 +150,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
           new Notice('Cache is not available.');
           return;
         }
-        const removed = this.wallpaperCache.clearCache();
+        const removed = await this.wallpaperCache.clearCache();
         if (removed === 0) {
           new Notice('Thumbnail cache is already empty.');
         } else {

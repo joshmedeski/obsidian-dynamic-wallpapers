@@ -1,12 +1,11 @@
 import {
   type App,
-  FileSystemAdapter,
+  type DataAdapter,
   Notice,
+  normalizePath,
   TFile,
   TFolder,
 } from 'obsidian';
-import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'fs';
-import { join, relative } from 'path';
 
 interface QueueItem {
   sourceFile: TFile;
@@ -33,27 +32,38 @@ const MIME_BY_EXT: Record<string, string> = {
 
 export class WallpaperCache {
   private app: App;
-  private pluginDir: string;
   private cacheDir: string;
   private queue: QueueItem[] = [];
   private isProcessing = false;
   private totalItemsToProcess = 0;
   private processedItemsCount = 0;
   private progressNotice: Notice | null = null;
+  // In-memory mirror of the cache directory's filenames. Kept in sync by
+  // sync()/clearCache()/generateThumbnail() so getCachedUrl() can answer
+  // synchronously on every picker render without touching the disk (the
+  // vault adapter is async, so a per-render await is not an option).
+  private cachedFilenames = new Set<string>();
 
   constructor(app: App, manifestDir: string) {
     this.app = app;
+    // Paths are relative to the vault root — the same root the adapter's
+    // exists/list/stat/writeBinary/remove operate on. No absolute paths and
+    // no getBasePath(), so this works on every platform Obsidian supports,
+    // including mobile.
+    this.cacheDir = normalizePath(`${manifestDir}/.cache`);
+  }
 
-    const adapter = this.app.vault.adapter;
-    if (adapter instanceof FileSystemAdapter) {
-      this.pluginDir = join(adapter.getBasePath(), manifestDir);
-      this.cacheDir = join(this.pluginDir, '.cache');
+  private get adapter(): DataAdapter {
+    return this.app.vault.adapter;
+  }
 
-      if (!existsSync(this.cacheDir)) {
-        mkdirSync(this.cacheDir, { recursive: true });
-      }
-    } else {
-      throw new Error('FileSystemAdapter required for caching');
+  private cachePathFor(filename: string): string {
+    return normalizePath(`${this.cacheDir}/${filename}`);
+  }
+
+  private async ensureCacheDir(): Promise<void> {
+    if (!(await this.adapter.exists(this.cacheDir))) {
+      await this.adapter.mkdir(this.cacheDir);
     }
   }
 
@@ -61,8 +71,7 @@ export class WallpaperCache {
    * Synchronizes the cache folder with the source wallpaper folder.
    */
   async sync(wallpaperFolder: TFolder): Promise<void> {
-    const adapter = this.app.vault.adapter;
-    if (!(adapter instanceof FileSystemAdapter)) return;
+    await this.ensureCacheDir();
 
     const sourceFiles = wallpaperFolder.children.filter(
       (f) => f instanceof TFile && this.isImage(f)
@@ -75,15 +84,14 @@ export class WallpaperCache {
       const cacheKey = this.getCacheFilename(file);
       sourceIds.add(cacheKey);
 
-      const cachePath = join(this.cacheDir, cacheKey);
+      const cachePath = this.cachePathFor(cacheKey);
 
       // Check if cache needs update
       let needsUpdate = true;
-      if (existsSync(cachePath)) {
-        const cacheStat = statSync(cachePath);
-        // If cache is newer than source, we are good
-        // We add a small buffer (100ms) to avoid floating point/fs timing quirks
-        if (cacheStat.mtimeMs > file.stat.mtime) {
+      if (await this.adapter.exists(cachePath)) {
+        const cacheStat = await this.adapter.stat(cachePath);
+        // If cache is newer than source, we are good.
+        if (cacheStat && cacheStat.mtime > file.stat.mtime) {
           needsUpdate = false;
         }
       }
@@ -93,16 +101,25 @@ export class WallpaperCache {
       }
     }
 
-    // Cleanup orphans
-    if (existsSync(this.cacheDir)) {
-      const cachedFiles = readdirSync(this.cacheDir);
-      for (const file of cachedFiles) {
-        if (!sourceIds.has(file)) {
+    // Cleanup orphans and rebuild the in-memory mirror from what's actually
+    // on disk — files that survive cleanup are valid and must be visible to
+    // getCachedUrl(), including ones that predate this session.
+    if (await this.adapter.exists(this.cacheDir)) {
+      const { files } = await this.adapter.list(this.cacheDir);
+      for (const filePath of files) {
+        const filename = filePath.split('/').pop() ?? filePath;
+        if (!sourceIds.has(filename)) {
           try {
-            unlinkSync(join(this.cacheDir, file));
+            await this.adapter.remove(filePath);
+            this.cachedFilenames.delete(filename);
           } catch (e) {
-            console.error(`Failed to remove orphaned cache file: ${file}`, e);
+            console.error(
+              `Failed to remove orphaned cache file: ${filename}`,
+              e
+            );
           }
+        } else {
+          this.cachedFilenames.add(filename);
         }
       }
     }
@@ -122,21 +139,25 @@ export class WallpaperCache {
    * just recreates one cache file that sync() will regenerate again
    * later if needed).
    */
-  clearCache(): number {
-    if (!existsSync(this.cacheDir)) {
+  async clearCache(): Promise<number> {
+    if (!(await this.adapter.exists(this.cacheDir))) {
       // Still reset pending work even if the dir is missing, so a stale
       // queue can't outlive the cache it was writing to.
       this.queue = [];
+      this.cachedFilenames.clear();
       return 0;
     }
 
     let removed = 0;
-    for (const file of readdirSync(this.cacheDir)) {
+    const { files } = await this.adapter.list(this.cacheDir);
+    for (const filePath of files) {
+      const filename = filePath.split('/').pop() ?? filePath;
       try {
-        unlinkSync(join(this.cacheDir, file));
+        await this.adapter.remove(filePath);
+        this.cachedFilenames.delete(filename);
         removed++;
       } catch (e) {
-        console.error(`Failed to remove cache file: ${file}`, e);
+        console.error(`Failed to remove cache file: ${filename}`, e);
       }
     }
 
@@ -155,7 +176,7 @@ export class WallpaperCache {
    * so the caller can show a meaningful Notice.
    */
   async rebuildCache(wallpaperFolder: TFolder): Promise<number> {
-    this.clearCache();
+    await this.clearCache();
     await this.sync(wallpaperFolder);
 
     // After sync() pushes its work, this.queue holds everything still
@@ -168,14 +189,12 @@ export class WallpaperCache {
    * Falls back to the original resource path if cache doesn't exist
    */
   getCachedUrl(file: TFile): string {
-    const cachePath = join(this.cacheDir, this.getCacheFilename(file));
+    const filename = this.getCacheFilename(file);
 
-    if (existsSync(cachePath)) {
-      const adapter = this.app.vault.adapter;
-      if (adapter instanceof FileSystemAdapter) {
-        const relativePath = relative(adapter.getBasePath(), cachePath);
-        return adapter.getResourcePath(relativePath);
-      }
+    // Synchronous check against the in-memory mirror — no disk access, so
+    // this stays cheap on every picker render.
+    if (this.cachedFilenames.has(filename)) {
+      return this.adapter.getResourcePath(this.cachePathFor(filename));
     }
 
     return this.app.vault.getResourcePath(file);
@@ -278,9 +297,11 @@ export class WallpaperCache {
     if (!jpegBlob) throw new Error('Canvas toBlob returned null');
 
     const arrayBuffer = await jpegBlob.arrayBuffer();
-    // Direct fs write — mirrors the old ffmpeg write to disk and keeps
-    // the cache directory invisible to Obsidian's own sync/indexing.
-    writeFileSync(destPath, Buffer.from(arrayBuffer));
+    // Write through the vault adapter (cross-platform, incl. mobile). The
+    // .cache directory still lives under the plugin dir, so it stays
+    // invisible to Obsidian's own sync/indexing.
+    await this.adapter.writeBinary(destPath, arrayBuffer);
+    this.cachedFilenames.add(destPath.split('/').pop() ?? destPath);
   }
 
   /**
