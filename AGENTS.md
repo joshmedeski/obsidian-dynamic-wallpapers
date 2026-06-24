@@ -22,10 +22,10 @@
 
 Obsidian requires version metadata in two places, kept in sync:
 
-1. `public/manifest.json` — bump `version` (and update `minAppVersion` if the plugin now requires a newer Obsidian).
+1. `manifest.json` — bump `version` (and update `minAppVersion` if the plugin now requires a newer Obsidian).
 2. `versions.json` — add a new entry mapping the plugin version to the minimum Obsidian version, e.g. `"1.1.0": "1.4.0"`.
 
-A `version-bump.mjs` helper script is included; read it before relying on it (it may not cover both files automatically). After bumping:
+Run `node version-bump.mjs <version>` to update **both** files in one step (it reads `minAppVersion` from `manifest.json` and writes the matching `versions.json` entry). After bumping:
 
 1. `npm run build` to produce the production `main.js`.
 2. Attach only `manifest.json`, `main.js`, and `styles.css` to the GitHub release.
@@ -65,18 +65,19 @@ Before opening a PR, run `npm run check` and `npm run build` locally. CI is the 
 Releases are driven by pushing a version tag:
 
 ```bash
-# 1. Bump the version in public/manifest.json and versions.json (and run
-#    `node version-bump.mjs <new-version>` if it covers your case — read
-#    the script first).
+# 1. Bump the version. This updates both manifest.json and versions.json
+#    (adds a "<version>": "<minAppVersion>" entry) in one step.
+node version-bump.mjs <version>     # e.g. node version-bump.mjs 1.2.0
 # 2. Commit the version bump on main.
-# 3. Tag and push.
+git commit -am "chore: bump version to <version>"
+# 3. Tag and push. The tag MUST match manifest.json's version, with no "v" prefix.
 git tag <version>
 git push origin <version>
 ```
 
 `.github/workflows/release.yml` then:
 
-1. Validates the tag version (e.g. `1.2.3`) matches `public/manifest.json` `version`. If not, the job fails with a clear message.
+1. Validates the tag version (e.g. `1.2.3`) matches `manifest.json` `version`. If not, the job fails with a clear message.
 2. Runs `npm run check` and `npm run build`.
 3. Verifies the three release artifacts exist.
 4. Uses `softprops/action-gh-release@v2` with `generate_release_notes: true` to create a GitHub release. GitHub automatically appends the changelog (PRs, commits, contributors) since the previous tag.
@@ -107,7 +108,7 @@ This complements (does not replace) the tag-push workflow above. The typical seq
 # → release_builder_submit (mode=draft) creates an untagged draft on GitHub
 
 # Back at the terminal:
-# Bump public/manifest.json and versions.json
+node version-bump.mjs 1.0.1     # bumps manifest.json + versions.json
 git commit -am "chore: bump version to 1.0.1"
 git tag 1.0.1
 git push origin 1.0.1     # → release.yml publishes the real release
