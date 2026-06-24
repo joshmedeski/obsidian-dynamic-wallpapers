@@ -1,7 +1,7 @@
 {
 	"id": "dynamic-wallpapers",
 	"name": "Dynamic Wallpapers",
-	"version": "1.1.3",
+	"version": "1.2.0",
 	"minAppVersion": "1.4.4",
 	"description": "Dynamically change your background with wallpapers that adapt to what you're doing.",
 	"author": "Josh Medeski",
