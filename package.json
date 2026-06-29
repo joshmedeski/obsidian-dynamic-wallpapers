@@ -8,14 +8,14 @@
     "check:watch": "svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "devDependencies": {
-    "@types/node": "^22.15.17",
-    "esbuild": "^0.25.0",
+    "@types/node": "^26.0.1",
+    "esbuild": "^0.28.1",
     "esbuild-svelte": "^0.9.3",
     "obsidian": "^1.8.7",
-    "svelte": "^5.43.12",
-    "svelte-check": "^4.6.0",
+    "svelte": "^5.56.4",
+    "svelte-check": "^4.7.1",
     "svelte-preprocess": "^6.0.3",
     "tslib": "^2.8.1",
-    "typescript": "^5.9.0"
+    "typescript": "^6.0.3"
   }
 }
