@@ -56,7 +56,8 @@ body {
 
 .popover,
 .suggestion-container,
-.cm-tooltip.cm-tooltip-autocomplete {
+.cm-tooltip.cm-tooltip-autocomplete,
+.maplibregl-popup-content {
   background-color: var(--overlay-background);
 }
 
