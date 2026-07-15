@@ -6,14 +6,11 @@ body {
   --modal-background: var(--overlay-background);
   --prompt-background: var(--overlay-background);
 
-  --background-primary: transparent;
   --background-primary-position: center top;
   --background-primary-repeat: no-repeat;
   --background-primary-size: cover;
 
-  --background-secondary: transparent;
   --menu-background: var(--overlay-background);
-  --background-secondary-alt: transparent;
   --tab-container-background: transparent;
   --titlebar-background-focused: transparent;
 
@@ -66,6 +63,25 @@ body {
 }
 
 /**
+ * Reveal the wallpaper through the main workspace panes and sidebars.
+ *
+ * Rather than blanking the global --background-primary / --background-secondary
+ * variables (which plugins and other tooling read to build consistent UI),
+ * we make only the actual pane surfaces transparent. The wallpaper + overlay
+ * tint from .app-container then shows through, while the variables keep their
+ * normal theme values everywhere else.
+ */
+.workspace-leaf-content,
+.view-content,
+.markdown-source-view,
+.markdown-reading-view,
+.cm-editor,
+.workspace-split.mod-left-split,
+.workspace-split.mod-right-split {
+  background-color: transparent;
+}
+
+/**
  * When "Translucent window" is enabled, Obsidian's core app.css applies
  * `.is-translucent .app-container { background-color: ... }` (specificity 0,2,0),
  * which out-specifies the rule above and ignores the overlay opacity.
@@ -78,6 +94,33 @@ body.is-translucent .app-container {
 
 .external-link {
   padding-inline-end: 1.2rem;
+}
+
+/**
+ * Auto-hide scrollbars — the whole scrollbar (track + thumb) stays invisible
+ * until you hover the scrollable area, then the thumb fades in using the
+ * theme's own scrollbar colors.
+ *
+ * The `body` prefix raises specificity above Obsidian's core/theme rules,
+ * which otherwise set the thumb color and win over a bare pseudo-element.
+ */
+body ::-webkit-scrollbar,
+body ::-webkit-scrollbar-track,
+body ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+body ::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  transition: background-color 0.2s ease;
+}
+
+body *:hover::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb-bg);
+}
+
+body *:hover::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-active-thumb-bg);
 }
 
 /**
