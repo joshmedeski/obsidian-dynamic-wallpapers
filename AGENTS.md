@@ -118,9 +118,10 @@ The pi-side preview lets you catch changelog issues **before** the public releas
 
 ## Conventions
 
-- Use `svelte/store` for state management (`writable`).
 - Manipulate DOM via Svelte components where possible, or `this.app` for Vault/Workspace.
-- Plugin settings managed via `store.ts` pattern.
+- Plugin settings live in `settings.ts` (`PluginSettings` + `DEFAULT_SETTINGS`) and are rendered declaratively: `DynamicWallpaperSettingTab.getSettingDefinitions()` returns Obsidian 1.13 setting definitions instead of building DOM in `display()`. Add a new setting by adding a field to `PluginSettings`/`DEFAULT_SETTINGS` and a definition whose `control.key` matches the field name.
+  - `setControlValue()` is overridden so every change routes through `plugin.saveSettings()` — the inherited version persists but skips `updateWallpaper()`, so the overlay/background CSS variables would go stale.
+  - The two frontmatter-property fields use a `render` callback (declarative `text` controls have no suggest hook) with `FrontmatterPropertySuggest`, and must persist by hand — `render` does not auto-save.
 - Dependencies: standalone npm project; versions pinned directly in `package.json`.
 - The wallpaper picker and thumbnail cache only recognize these image extensions: `png`, `jpg`, `jpeg`, `webp`, `gif`, `bmp`, `svg`. Other formats are silently filtered out.
 - Thumbnails are generated with the browser's built-in `createImageBitmap` + `<canvas>` pipeline — no external binary required. The cache directory (`<pluginDir>/.cache/`) holds 480×270 cover-cropped JPEGs keyed by source mtime, mirroring what the old ffmpeg filter chain produced.

@@ -1,12 +1,5 @@
-import { type App, FileSystemAdapter, MetadataCache, Notice, Plugin, PluginSettingTab, TFile, TFolder, type TAbstractFile } from 'obsidian';
-import { mount, unmount } from 'svelte';
-import SettingsTab from './SettingsTab.svelte';
-import {
-  DEFAULT_SETTINGS,
-  initStore,
-  type PluginSettings,
-  pluginSettings,
-} from './store';
+import { AbstractInputSuggest, type App, FileSystemAdapter, MetadataCache, Notice, Plugin, PluginSettingTab, type Setting, type SettingDefinitionItem, TFile, TFolder, type TAbstractFile } from 'obsidian';
+import { DEFAULT_SETTINGS, type PluginSettings } from './settings';
 import { WallpaperModal } from './WallpaperModal';
 import { RelatedWallpapersModal } from './RelatedWallpapersModal';
 import type {
@@ -16,8 +9,52 @@ import type {
 } from './RelatedWallpapersList.types';
 import { WallpaperCache } from './WallpaperCache';
 
+/**
+ * Type-ahead over every frontmatter key used anywhere in the vault. The
+ * declarative `text` control has no suggest hook, which is why the two
+ * property-name settings use a `render` callback instead of a `control`.
+ */
+class FrontmatterPropertySuggest extends AbstractInputSuggest<string> {
+  constructor(
+    app: App,
+    inputEl: HTMLInputElement,
+    private readonly onPick: (value: string) => void
+  ) {
+    super(app, inputEl);
+  }
+
+  protected getSuggestions(query: string): string[] {
+    const keys = new Set<string>();
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const frontmatter =
+        this.app.metadataCache.getFileCache(file)?.frontmatter;
+      if (!frontmatter) continue;
+      for (const key of Object.keys(frontmatter)) {
+        if (key !== 'position') keys.add(key);
+      }
+    }
+
+    const lowerQuery = query.toLowerCase();
+    return [...keys]
+      .filter((key) => key.toLowerCase().includes(lowerQuery))
+      .sort()
+      .slice(0, 10);
+  }
+
+  renderSuggestion(value: string, el: HTMLElement): void {
+    el.setText(value);
+  }
+
+  selectSuggestion(value: string): void {
+    // setValue() writes straight to the input element, so the TextComponent
+    // sees the new text but its onChange never fires — persist it ourselves.
+    this.setValue(value);
+    this.onPick(value);
+    this.close();
+  }
+}
+
 class DynamicWallpaperSettingTab extends PluginSettingTab {
-  component: Record<string, unknown> | undefined;
   plugin: DynamicWallpaperPlugin;
 
   constructor(app: App, plugin: DynamicWallpaperPlugin) {
@@ -25,22 +62,124 @@ class DynamicWallpaperSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-
-    this.component = mount(SettingsTab, {
-      target: containerEl,
-      props: {
-        app: this.app,
+  getSettingDefinitions(): SettingDefinitionItem<keyof PluginSettings & string>[] {
+    return [
+      {
+        name: 'Wallpaper property',
+        desc: "The frontmatter property name used to set a note's wallpaper.",
+        render: (setting) =>
+          this.renderPropertyInput(
+            setting,
+            'wallpaperProperty',
+            'e.g. wallpaper'
+          ),
       },
-    });
+      {
+        name: 'Wallpapers directory',
+        desc: 'The folder containing your wallpapers.',
+        control: {
+          type: 'folder',
+          key: 'wallpapersPath',
+          placeholder: 'e.g. Extras/Wallpapers',
+          includeRoot: true,
+        },
+      },
+      {
+        name: 'Keep existing wallpaper',
+        desc: 'When enabled, the last wallpaper remains visible if the current note has no wallpaper set. When disabled, notes without a wallpaper show a blank background.',
+        control: { type: 'toggle', key: 'keepExistingWallpaper' },
+      },
+      {
+        type: 'group',
+        heading: 'Inheritance',
+        items: [
+          {
+            name: 'Inheritance property',
+            desc: 'Check outlinks in this specific frontmatter property for wallpapers.',
+            render: (setting) =>
+              this.renderPropertyInput(
+                setting,
+                'inheritanceProperty',
+                'e.g. areas'
+              ),
+          },
+          {
+            name: 'Inherit from all frontmatter links',
+            desc: 'Check all frontmatter outlinks for wallpapers.',
+            control: { type: 'toggle', key: 'inheritFromFrontmatterLinks' },
+          },
+          {
+            name: 'Inherit from body links',
+            desc: 'Check inline body links for wallpapers (last link checked first).',
+            control: { type: 'toggle', key: 'inheritFromBodyLinks' },
+          },
+          {
+            name: 'Inherit from backlinks',
+            desc: 'After all outgoing link sources are exhausted, check notes that link to this one for a wallpaper. This is the lowest priority.',
+            control: { type: 'toggle', key: 'inheritFromBacklinks' },
+          },
+        ],
+      },
+      {
+        type: 'group',
+        heading: 'Overlay',
+        items: [
+          {
+            name: 'Overlay opacity (light mode)',
+            desc: 'The opacity of the overlay on top of the wallpaper in light mode.',
+            control: {
+              type: 'slider',
+              key: 'overlayOpacityLight',
+              min: 0,
+              max: 1,
+              step: 0.05,
+            },
+          },
+          {
+            name: 'Overlay opacity (dark mode)',
+            desc: 'The opacity of the overlay on top of the wallpaper in dark mode.',
+            control: {
+              type: 'slider',
+              key: 'overlayOpacityDark',
+              min: 0,
+              max: 1,
+              step: 0.05,
+            },
+          },
+        ],
+      },
+    ];
   }
 
-  hide() {
-    if (this.component) {
-      void unmount(this.component);
-    }
+  /**
+   * Mutates and persists `plugin.settings` for declarative `control`
+   * definitions. The inherited implementation writes the value but doesn't
+   * go through `saveSettings()`, so the wallpaper and overlay CSS variables
+   * would only catch up on the next note switch.
+   */
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    Object.assign(this.plugin.settings, { [key]: value });
+    await this.plugin.saveSettings();
+  }
+
+  private renderPropertyInput(
+    setting: Setting,
+    key: 'wallpaperProperty' | 'inheritanceProperty',
+    placeholder: string
+  ): void {
+    setting.addText((text) => {
+      const persist = (value: string) => {
+        this.plugin.settings[key] = value;
+        void this.plugin.saveSettings();
+      };
+
+      text
+        .setPlaceholder(placeholder)
+        .setValue(this.plugin.settings[key])
+        .onChange(persist);
+
+      new FrontmatterPropertySuggest(this.app, text.inputEl, persist);
+    });
   }
 }
 
@@ -89,7 +228,6 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
-    initStore(this);
 
     if (this.manifest.dir) {
       this.wallpaperCache = new WallpaperCache(this.app, this.manifest.dir);
@@ -360,39 +498,26 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
   changeOverlayOpacity(delta: number) {
     const isDarkMode = activeDocument.body.classList.contains('theme-dark');
-    pluginSettings.update((settings) => {
-      let newOpacity: number;
-      if (isDarkMode) {
-        newOpacity = settings.overlayOpacityDark + delta;
-        newOpacity = Math.max(0, Math.min(1, newOpacity));
-        // Round to 2 decimal places
-        newOpacity = Math.round(newOpacity * 100) / 100;
+    const key = isDarkMode ? 'overlayOpacityDark' : 'overlayOpacityLight';
 
-        if (this.opacityNoticeTimeout) {
-          window.clearTimeout(this.opacityNoticeTimeout);
-        }
+    // Round to 2 decimal places
+    const newOpacity =
+      Math.round(
+        Math.max(0, Math.min(1, this.settings[key] + delta)) * 100
+      ) / 100;
 
-        this.opacityNoticeTimeout = window.setTimeout(() => {
-          new Notice(`Dark Mode Opacity: ${newOpacity}`);
-        }, 500);
+    this.settings[key] = newOpacity;
+    void this.saveSettings();
 
-        return { ...settings, overlayOpacityDark: newOpacity };
-      }
-      newOpacity = settings.overlayOpacityLight + delta;
-      newOpacity = Math.max(0, Math.min(1, newOpacity));
-      // Round to 2 decimal places
-      newOpacity = Math.round(newOpacity * 100) / 100;
+    if (this.opacityNoticeTimeout) {
+      window.clearTimeout(this.opacityNoticeTimeout);
+    }
 
-      if (this.opacityNoticeTimeout) {
-        window.clearTimeout(this.opacityNoticeTimeout);
-      }
-
-      this.opacityNoticeTimeout = window.setTimeout(() => {
-        new Notice(`Light Mode Opacity: ${newOpacity}`);
-      }, 500);
-
-      return { ...settings, overlayOpacityLight: newOpacity };
-    });
+    this.opacityNoticeTimeout = window.setTimeout(() => {
+      new Notice(
+        `${isDarkMode ? 'Dark' : 'Light'} Mode Opacity: ${newOpacity}`
+      );
+    }, 500);
   }
 
   async openWallpaperPicker() {

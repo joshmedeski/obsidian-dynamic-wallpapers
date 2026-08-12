@@ -14,6 +14,8 @@ Set per-note background wallpapers in Obsidian using frontmatter properties. Wal
 - 🔒 **Keep existing wallpaper:** Optionally retain the wallpaper when navigating to notes without one
 
 > **Desktop-only.** This plugin uses Node.js `fs` APIs, which are not available on Obsidian Mobile.
+>
+> **Requires Obsidian 1.13.0+.** The settings tab uses Obsidian's declarative settings API.
 
 ## Commands
 
