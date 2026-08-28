@@ -1,5 +1,6 @@
 export interface PluginSettings {
   wallpaperProperty: string;
+  wallpapersProperty: string;
   wallpapersPath: string;
   overlayOpacityLight: number;
   overlayOpacityDark: number;
@@ -12,6 +13,7 @@ export interface PluginSettings {
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   wallpaperProperty: "wallpaper",
+  wallpapersProperty: "wallpapers",
   wallpapersPath: "/",
   overlayOpacityLight: 0.8,
   overlayOpacityDark: 0.6,

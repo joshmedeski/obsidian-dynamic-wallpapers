@@ -75,6 +75,16 @@ class DynamicWallpaperSettingTab extends PluginSettingTab {
           ),
       },
       {
+        name: 'Wallpapers property',
+        desc: 'The frontmatter property name holding a list of wallpapers. When a note has this list, one entry is picked at random every time the note is opened. Takes priority over the single wallpaper property.',
+        render: (setting) =>
+          this.renderPropertyInput(
+            setting,
+            'wallpapersProperty',
+            'e.g. wallpapers'
+          ),
+      },
+      {
         name: 'Wallpapers directory',
         desc: 'The folder containing your wallpapers.',
         control: {
@@ -164,7 +174,7 @@ class DynamicWallpaperSettingTab extends PluginSettingTab {
 
   private renderPropertyInput(
     setting: Setting,
-    key: 'wallpaperProperty' | 'inheritanceProperty',
+    key: 'wallpaperProperty' | 'wallpapersProperty' | 'inheritanceProperty',
     placeholder: string
   ): void {
     setting.addText((text) => {
@@ -187,6 +197,45 @@ const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'];
 
 function isImageFile(file: TFile): boolean {
   return IMAGE_EXTENSIONS.includes(file.extension.toLowerCase());
+}
+
+/**
+ * Normalize a frontmatter value to a list of non-empty strings. A scalar
+ * becomes a one-element list; anything that isn't a string is dropped.
+ */
+function toStringList(value: unknown): string[] {
+  const entries = Array.isArray(value) ? value : [value];
+  return entries.filter(
+    (entry): entry is string =>
+      typeof entry === 'string' && entry.trim().length > 0
+  );
+}
+
+/** Fisher-Yates shuffle over a copy of `items`. */
+function shuffle<T>(items: T[]): T[] {
+  const shuffled = items.slice();
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+/**
+ * `frontmatterLinks` flattens list-valued properties, so a link under
+ * `areas` arrives keyed `areas.0`. Match both the bare key and the
+ * indexed form.
+ */
+function frontmatterKeyMatches(key: string, property: string): boolean {
+  if (!property) return false;
+  return key === property || key.startsWith(`${property}.`);
+}
+
+/** A single wallpaper choice: the raw frontmatter value plus the file it
+ * resolved to (null when the value doesn't name anything in the vault). */
+interface WallpaperPick {
+  file: TFile | null;
+  rawValue: string;
 }
 
 const TIER_META: Record<
@@ -354,14 +403,53 @@ export default class DynamicWallpaperPlugin extends Plugin {
         }
         const activeFile = this.app.workspace.getActiveFile();
         if (activeFile) {
+          const link = `[[${wallpaper.name}]]`;
+          // Boxed so TypeScript doesn't narrow it to the initial value —
+          // it can't see that processFrontMatter runs the callback.
+          const result: { outcome: 'set' | 'appended' | 'already-in-pool' } = {
+            outcome: 'set',
+          };
           try {
             await this.app.fileManager.processFrontMatter(
               activeFile,
               (frontmatter: Record<string, unknown>) => {
-                frontmatter[this.settings.wallpaperProperty] = `[[${wallpaper.name}]]`;
+                const property = this.settings.wallpapersProperty;
+                const raw = property ? frontmatter[property] : undefined;
+                const pool = toStringList(raw);
+
+                if (pool.length === 0) {
+                  frontmatter[this.settings.wallpaperProperty] = link;
+                  return;
+                }
+
+                // A non-empty pool wins over the singular property, so
+                // writing the scalar here would have no visible effect —
+                // add the wallpaper to the pool instead.
+                const alreadyInPool = pool.some(
+                  (value) =>
+                    this.resolveWallpaperValue(value, activeFile.path)
+                      ?.path === wallpaper.path
+                );
+                if (alreadyInPool) {
+                  result.outcome = 'already-in-pool';
+                  return;
+                }
+
+                result.outcome = 'appended';
+                if (Array.isArray(raw)) {
+                  raw.push(link);
+                } else {
+                  frontmatter[property] = [...pool, link];
+                }
               }
             );
-            new Notice(`Wallpaper updated to [[${wallpaper.name}]]`);
+            if (result.outcome === 'already-in-pool') {
+              new Notice(`${link} is already in this note's wallpapers.`);
+            } else if (result.outcome === 'appended') {
+              new Notice(`Added ${link} to this note's wallpapers.`);
+            } else {
+              new Notice(`Wallpaper updated to ${link}`);
+            }
           } catch (err) {
             console.error('Failed to update frontmatter', err);
             new Notice('Failed to update wallpaper in frontmatter.');
@@ -595,11 +683,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     // Shuffle backlinks (Fisher–Yates) so we can short-circuit on the first
     // candidate whose resolved wallpaper differs from the current one.
-    const shuffled = backlinkPaths.slice();
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
+    const shuffled = shuffle(backlinkPaths);
 
     const currentPath = this.currentWallpaper?.path ?? null;
 
@@ -610,24 +694,15 @@ export default class DynamicWallpaperPlugin extends Plugin {
       const resolved = this.resolveWallpaperForFile(backlinkFile);
       if (!resolved) continue;
 
-      // `resolved` may be a wiki link (e.g. "[[foo.png]]") or a raw path.
-      // Compare against the *file* we'd resolve it to, since that's what
-      // ends up displayed as the current wallpaper.
-      const cleanResolved = resolved.replace(/\[\[|\]\]/g, '');
-      const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(
-        cleanResolved,
-        backlinkFile.path
-      );
-
       // Skip if it points at the wallpaper that's already on screen.
-      if (resolvedFile && currentPath && resolvedFile.path === currentPath) {
+      if (resolved.file && currentPath && resolved.file.path === currentPath) {
         continue;
       }
 
       // Found a new candidate — apply it.
-      if (resolvedFile instanceof TFile) {
-        this.currentWallpaper = resolvedFile;
-        const wallpaperUrl = this.app.vault.getResourcePath(resolvedFile);
+      if (resolved.file) {
+        this.currentWallpaper = resolved.file;
+        const wallpaperUrl = this.app.vault.getResourcePath(resolved.file);
         activeDocument.body.style.setProperty(
           '--background-image',
           `url("${wallpaperUrl}")`
@@ -637,7 +712,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
         this.currentWallpaper = null;
         activeDocument.body.style.setProperty(
           '--background-image',
-          `url("${cleanResolved}")`
+          `url("${resolved.rawValue.replace(/\[\[|\]\]/g, '')}")`
         );
       }
       return;
@@ -737,16 +812,11 @@ export default class DynamicWallpaperPlugin extends Plugin {
       return;
     }
 
-    // Fisher–Yates shuffle so any of the non-current candidates is
-    // equally likely, then pick the first one that differs from the
-    // wallpaper currently displayed.
-    const shuffled = candidates.slice();
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-
-    const picked = shuffled.find((f) => f.path !== currentPath);
+    // Shuffle so any of the non-current candidates is equally likely,
+    // then pick the first one that differs from the wallpaper currently
+    // displayed. Every entry of a `wallpapers` list is its own candidate,
+    // so a note offering three wallpapers carries three times the weight.
+    const picked = shuffle(candidates).find((f) => f.path !== currentPath);
     if (!picked) return; // unreachable given the early-return above, but
                           // keeps the type-narrowing explicit.
 
@@ -768,13 +838,10 @@ export default class DynamicWallpaperPlugin extends Plugin {
     const groups: RelatedWallpaperGroup[] = [];
 
     // Tier 1: direct frontmatter on the active note itself.
-    const direct = this.collectTierWallpapers(targetFile, 'direct', () => {
-      const meta = this.app.metadataCache.getFileCache(targetFile);
-      const wp = meta?.frontmatter?.[this.settings.wallpaperProperty] as
-        | string
-        | undefined;
-      return wp ? [{ link: wp }] : [];
-    });
+    const direct = this.collectTierWallpapers(targetFile, 'direct', () =>
+      // Each entry of a `wallpapers` list becomes its own card.
+      this.readWallpaperValues(targetFile).map((link) => ({ link }))
+    );
     groups.push(direct);
 
     // Tier 2: inheritance property (frontmatter links under a specific key).
@@ -784,8 +851,8 @@ export default class DynamicWallpaperPlugin extends Plugin {
         'inheritance-property',
         () => {
           const meta = this.app.metadataCache.getFileCache(targetFile);
-          return (meta?.frontmatterLinks ?? []).filter(
-            (l) => l.key === this.settings.inheritanceProperty
+          return (meta?.frontmatterLinks ?? []).filter((l) =>
+            frontmatterKeyMatches(l.key, this.settings.inheritanceProperty)
           );
         }
       );
@@ -799,7 +866,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
         'frontmatter-links',
         () => {
           const meta = this.app.metadataCache.getFileCache(targetFile);
-          return meta?.frontmatterLinks ?? [];
+          return this.inheritableFrontmatterLinks(meta?.frontmatterLinks ?? []);
         }
       );
       groups.push(items);
@@ -893,37 +960,36 @@ export default class DynamicWallpaperPlugin extends Plugin {
         : activeFile;
       if (!sourceFile) continue;
 
-      // The actual wallpaper value comes from the source note's frontmatter.
-      const wallpaperValue: string | undefined = isBacklinkTier
-        ? (this.app.metadataCache.getFileCache(sourceFile)?.frontmatter?.[
-            this.settings.wallpaperProperty
-          ] as string | undefined)
-        : this.readWallpaperFromLinkedNote(entry.link, sourceFile.path);
+      // The actual wallpaper values come from the source note's
+      // frontmatter. A `wallpapers` list contributes one card per entry.
+      const wallpaperValues = isBacklinkTier
+        ? this.readWallpaperValues(sourceFile)
+        : this.readWallpaperValuesFromLink(entry.link, sourceFile.path);
 
-      if (!wallpaperValue) continue;
+      for (const wallpaperValue of wallpaperValues) {
+        const cleanValue = wallpaperValue.replace(/\[\[|\]\]/g, '');
+        const dedupeKey = `${cleanValue}|${sourceFile.path}|${tier}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
 
-      const cleanValue = String(wallpaperValue).replace(/\[\[|\]\]/g, '');
-      const dedupeKey = `${cleanValue}|${sourceFile.path}|${tier}`;
-      if (seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
+        const wallpaperFile = this.app.metadataCache.getFirstLinkpathDest(
+          cleanValue,
+          sourceFile.path
+        );
 
-      const wallpaperFile = this.app.metadataCache.getFirstLinkpathDest(
-        cleanValue,
-        sourceFile.path
-      );
-
-      items.push({
-        wallpaperFile: wallpaperFile instanceof TFile ? wallpaperFile : null,
-        url:
-          wallpaperFile instanceof TFile
-            ? this.app.vault.getResourcePath(wallpaperFile)
-            : null,
-        rawValue: String(wallpaperValue),
-        displayName: this.cleanWallpaperLabel(String(wallpaperValue)),
-        sourceFile,
-        sourcePath: sourceFile.path,
-        tier,
-      });
+        items.push({
+          wallpaperFile: wallpaperFile instanceof TFile ? wallpaperFile : null,
+          url:
+            wallpaperFile instanceof TFile
+              ? this.app.vault.getResourcePath(wallpaperFile)
+              : null,
+          rawValue: wallpaperValue,
+          displayName: this.cleanWallpaperLabel(wallpaperValue),
+          sourceFile,
+          sourcePath: sourceFile.path,
+          tier,
+        });
+      }
     }
 
     return {
@@ -940,25 +1006,6 @@ export default class DynamicWallpaperPlugin extends Plugin {
   private resolveBacklinkSource(sourcePath: string): TFile | null {
     const file = this.app.vault.getAbstractFileByPath(sourcePath);
     return file instanceof TFile ? file : null;
-  }
-
-  /**
-   * Read the wallpaper property from a note reached via an outgoing link.
-   * Returns undefined if the target doesn't exist or has no wallpaper.
-   */
-  private readWallpaperFromLinkedNote(
-    link: string,
-    sourcePath: string
-  ): string | undefined {
-    const linkedFile = this.app.metadataCache.getFirstLinkpathDest(
-      link,
-      sourcePath
-    );
-    if (!linkedFile) return undefined;
-    const linkedMeta = this.app.metadataCache.getFileCache(linkedFile);
-    return linkedMeta?.frontmatter?.[this.settings.wallpaperProperty] as
-      | string
-      | undefined;
   }
 
   /**
@@ -1003,67 +1050,172 @@ export default class DynamicWallpaperPlugin extends Plugin {
     return paths;
   }
 
+  /**
+   * Read a file's wallpaper values as a flat list. The list property
+   * (`wallpapers`) wins over the singular one (`wallpaper`); a scalar
+   * normalizes to a one-element list and non-string entries are dropped.
+   * Every frontmatter read goes through here so the array handling lives
+   * in one place instead of at each call site.
+   */
+  private readWallpaperValues(file: TFile): string[] {
+    const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!frontmatter) return [];
+
+    const list = this.settings.wallpapersProperty
+      ? toStringList(frontmatter[this.settings.wallpapersProperty])
+      : [];
+    if (list.length > 0) return list;
+
+    return this.settings.wallpaperProperty
+      ? toStringList(frontmatter[this.settings.wallpaperProperty])
+      : [];
+  }
+
+  /**
+   * Read the wallpaper values off a note reached via an outgoing link.
+   * Returns an empty list if the target doesn't exist or has no wallpaper.
+   */
+  private readWallpaperValuesFromLink(
+    link: string,
+    sourcePath: string
+  ): string[] {
+    const linkedFile = this.app.metadataCache.getFirstLinkpathDest(
+      link,
+      sourcePath
+    );
+    return linkedFile instanceof TFile
+      ? this.readWallpaperValues(linkedFile)
+      : [];
+  }
+
+  /** Resolve a raw frontmatter value (`[[foo.png]]` or a path) to a file. */
+  private resolveWallpaperValue(
+    rawValue: string,
+    sourcePath: string
+  ): TFile | null {
+    const clean = rawValue.replace(/\[\[|\]\]/g, '');
+    const file = this.app.metadataCache.getFirstLinkpathDest(clean, sourcePath);
+    return file instanceof TFile ? file : null;
+  }
+
+  /**
+   * Pick one wallpaper out of a candidate list, re-rolled on every call.
+   * Entries that don't resolve to a file are skipped rather than counted as
+   * a failed pick, so a typo'd link can't blank the wallpaper 1-in-N times.
+   * When nothing resolves the first raw value comes back as an unresolved
+   * pick — callers keep it only as a last-resort fallback. Returns null for
+   * an empty list.
+   */
+  private pickWallpaper(
+    values: string[],
+    sourcePath: string
+  ): WallpaperPick | null {
+    if (values.length === 0) return null;
+
+    for (const rawValue of shuffle(values)) {
+      const file = this.resolveWallpaperValue(rawValue, sourcePath);
+      if (file) return { file, rawValue };
+    }
+
+    return { file: null, rawValue: values[0] };
+  }
+
+  /**
+   * Frontmatter links that are worth following for inheritance — i.e. every
+   * link except the ones under the wallpaper properties themselves, which
+   * point at images rather than at notes to inherit from.
+   */
+  private inheritableFrontmatterLinks<T extends { key: string }>(
+    links: T[]
+  ): T[] {
+    return links.filter(
+      (link) =>
+        !frontmatterKeyMatches(link.key, this.settings.wallpaperProperty) &&
+        !frontmatterKeyMatches(link.key, this.settings.wallpapersProperty)
+    );
+  }
+
+  /**
+   * Follow each link in turn and return the first pick that resolves to a
+   * real file. Unresolvable values are stashed in `fallback` (first one
+   * wins) so the search can keep walking the chain instead of stopping on
+   * a broken link.
+   */
   private findWallpaperFromLinks(
     links: { link: string }[],
-    sourcePath: string
-  ): string | undefined {
+    sourcePath: string,
+    fallback: { pick: WallpaperPick | null }
+  ): WallpaperPick | null {
     for (const entry of links) {
       const linkedFile = this.app.metadataCache.getFirstLinkpathDest(
         entry.link, sourcePath
       );
-      if (linkedFile) {
-        const linkedMeta = this.app.metadataCache.getFileCache(linkedFile);
-        const wp = linkedMeta?.frontmatter?.[this.settings.wallpaperProperty] as
-          | string
-          | undefined;
-        if (wp) return wp;
-      }
+      if (!(linkedFile instanceof TFile)) continue;
+
+      const pick = this.pickWallpaper(
+        this.readWallpaperValues(linkedFile),
+        linkedFile.path
+      );
+      if (!pick) continue;
+      if (pick.file) return pick;
+      fallback.pick ??= pick;
     }
-    return undefined;
+    return null;
   }
 
   /**
-   * Resolve a wallpaper string for an arbitrary note using the full priority
-   * chain (direct → inheritance property → frontmatter links → body links →
-   * backlinks of `targetFile`). Returns the raw frontmatter value (may include
-   * `[[brackets]]`) or `undefined` if no wallpaper is found.
+   * Resolve a wallpaper for an arbitrary note using the full priority chain
+   * (direct → inheritance property → frontmatter links → body links →
+   * backlinks of `targetFile`). Notes offering a `wallpapers` list get one
+   * random entry per call, so every note activation re-rolls. Returns null
+   * when no tier offers anything at all.
    */
-  private resolveWallpaperForFile(targetFile: TFile): string | undefined {
+  private resolveWallpaperForFile(targetFile: TFile): WallpaperPick | null {
     const metadata = this.app.metadataCache.getFileCache(targetFile);
-    let wallpaper: string | undefined = metadata?.frontmatter?.[
-      this.settings.wallpaperProperty
-    ] as string | undefined;
+    // Values that named a file we couldn't find. We keep the first one and
+    // only fall back to it once every tier has come up empty, matching the
+    // old behavior of rendering an unresolvable value as a raw CSS url.
+    const fallback: { pick: WallpaperPick | null } = { pick: null };
 
-    if (!wallpaper && this.settings.inheritanceProperty) {
-      const fmLinks = (metadata?.frontmatterLinks ?? [])
-        .filter(l => l.key === this.settings.inheritanceProperty);
-      wallpaper = this.findWallpaperFromLinks(fmLinks, targetFile.path);
+    const direct = this.pickWallpaper(
+      this.readWallpaperValues(targetFile),
+      targetFile.path
+    );
+    if (direct?.file) return direct;
+    if (direct) fallback.pick = direct;
+
+    const tiers: { link: string }[][] = [];
+
+    if (this.settings.inheritanceProperty) {
+      tiers.push(
+        (metadata?.frontmatterLinks ?? []).filter((l) =>
+          frontmatterKeyMatches(l.key, this.settings.inheritanceProperty)
+        )
+      );
     }
 
-    if (!wallpaper && this.settings.inheritFromFrontmatterLinks) {
-      const fmLinks = metadata?.frontmatterLinks ?? [];
-      wallpaper = this.findWallpaperFromLinks(fmLinks, targetFile.path);
+    if (this.settings.inheritFromFrontmatterLinks) {
+      tiers.push(
+        this.inheritableFrontmatterLinks(metadata?.frontmatterLinks ?? [])
+      );
     }
 
-    if (!wallpaper && this.settings.inheritFromBodyLinks) {
-      const links = (metadata?.links ?? []).slice().reverse();
-      wallpaper = this.findWallpaperFromLinks(links, targetFile.path);
+    if (this.settings.inheritFromBodyLinks) {
+      tiers.push((metadata?.links ?? []).slice().reverse());
     }
 
-    if (!wallpaper && this.settings.inheritFromBacklinks) {
-      const resolvedLinks = this.app.metadataCache.resolvedLinks;
-      const backlinkFiles: { link: string }[] = [];
-      for (const [sourcePath, destinations] of Object.entries(resolvedLinks)) {
-        if (targetFile.path in destinations) {
-          backlinkFiles.push({ link: sourcePath });
-        }
-      }
-      if (backlinkFiles.length > 0) {
-        wallpaper = this.findWallpaperFromLinks(backlinkFiles, targetFile.path);
-      }
+    if (this.settings.inheritFromBacklinks) {
+      tiers.push(
+        this.collectBacklinkPaths(targetFile).map((link) => ({ link }))
+      );
     }
 
-    return wallpaper;
+    for (const links of tiers) {
+      const pick = this.findWallpaperFromLinks(links, targetFile.path, fallback);
+      if (pick) return pick;
+    }
+
+    return fallback.pick;
   }
 
   private updateWallpaper() {
@@ -1080,32 +1232,23 @@ export default class DynamicWallpaperPlugin extends Plugin {
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) return;
 
-    const wallpaper = this.resolveWallpaperForFile(activeFile);
+    const pick = this.resolveWallpaperForFile(activeFile);
 
-    if (wallpaper) {
-      // Strip wiki link brackets if present
-      const cleanWallpaper = wallpaper.replace(/\[\[|\]\]/g, '');
-
-      // Resolve attachment to get the app:// URL
-      const wallpaperFile = this.app.metadataCache.getFirstLinkpathDest(
-        cleanWallpaper,
-        activeFile.path
+    if (pick?.file) {
+      this.currentWallpaper = pick.file;
+      const wallpaperUrl = this.app.vault.getResourcePath(pick.file);
+      activeDocument.body.style.setProperty(
+        '--background-image',
+        `url("${wallpaperUrl}")`
       );
-
-      if (wallpaperFile) {
-        this.currentWallpaper = wallpaperFile;
-        const wallpaperUrl = this.app.vault.getResourcePath(wallpaperFile);
-        activeDocument.body.style.setProperty(
-          '--background-image',
-          `url("${wallpaperUrl}")`
-        );
-      } else {
-        // Fallback to original value if not found as attachment
-        activeDocument.body.style.setProperty(
-          '--background-image',
-          `url("${cleanWallpaper}")`
-        );
-      }
+    } else if (pick) {
+      // The value didn't resolve to an attachment — fall back to using it
+      // as a raw url, stripped of any wiki-link brackets.
+      this.currentWallpaper = null;
+      activeDocument.body.style.setProperty(
+        '--background-image',
+        `url("${pick.rawValue.replace(/\[\[|\]\]/g, '')}")`
+      );
     } else if (!this.settings.keepExistingWallpaper) {
       this.currentWallpaper = null;
       activeDocument.body.style.removeProperty('--background-image');
