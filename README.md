@@ -3,7 +3,7 @@
 Set per-note background wallpapers in Obsidian using frontmatter properties. Wallpapers can be inherited from linked notes, browsed in a gallery, or randomized from any combination of inheritance tiers.
 
 - 🖼️ **Per-note wallpapers:** Set a `wallpaper` frontmatter property linking to an image in your vault
-- 🎰 **Wallpaper pools:** Set a `wallpapers` list instead and the plugin picks one at random every time the note is opened
+- 🎰 **Wallpaper pools:** Set a `wallpapers` list instead and the plugin picks one at random each time you open the note — the pick then holds steady while you work in it
 - 🔗 **Wallpaper inheritance:** Notes without a wallpaper can inherit from linked notes (via a specific frontmatter property, all frontmatter links, body links, or backlinks)
 - 🎨 **Wallpaper picker:** Browse and select wallpapers from a visual gallery with thumbnail previews
 - 🎲 **Random wallpaper:** Pick a random wallpaper from the active note's backlink pool, or from the full set of related wallpapers
@@ -29,7 +29,7 @@ All commands are available from the Command Palette (`Cmd/Ctrl + P`).
 - **Increase Overlay Opacity:** Raise the active theme's overlay opacity by 0.05.
 - **Decrease Overlay Opacity:** Lower the active theme's overlay opacity by 0.05.
 - **Set Current Wallpaper to Note:** Write the wallpaper currently on screen into the active note's frontmatter as a wiki link. If the note already has a non-empty `wallpapers` list, the wallpaper is appended to that pool instead (writing the singular property would have no effect, since the list takes priority).
-- **Refresh Wallpaper:** Re-run the full wallpaper resolution pipeline for the active note.
+- **Refresh Wallpaper:** Re-run the full wallpaper resolution pipeline for the active note, re-rolling any `wallpapers` pool.
 - **Clear Thumbnail Cache:** Delete every file in the plugin's `.cache` directory.
 - **Rebuild Thumbnail Cache:** Wipe the cache and regenerate a thumbnail for every image in the Wallpapers Directory.
 - **Flip Current Wallpaper (Horizontal):** Mirror the current wallpaper image in place (overwrites the source file — no undo).
@@ -50,7 +50,7 @@ wallpapers:
 ---
 ```
 
-When a note has a non-empty `wallpapers` list, the plugin picks one entry at random and ignores that note's singular `wallpaper` property. The pick is **re-rolled every time the note is activated** — tab away and back and you may land on a different one. *Refresh Wallpaper* re-rolls too. A note with only `wallpaper` behaves exactly as before.
+When a note has a non-empty `wallpapers` list, the plugin picks one entry at random and ignores that note's singular `wallpaper` property. The pick is **re-rolled when you switch to the note** — tab away and back and you may land on a different one — but it **stays put while the note is active**, so editing the note doesn't shuffle the background out from under you. The held wallpaper is kept as long as it's still in the pool; change the pool so it no longer qualifies and the next resolution draws again. *Refresh Wallpaper* forces a re-roll on demand. A note with only `wallpaper` behaves exactly as before.
 
 Entries that don't resolve to an image in the vault are skipped rather than counted as a pick, so one typo'd link can't leave you with a blank background some of the time. If a note's list is empty or nothing in it resolves, resolution falls through to its `wallpaper` property and then on down the inheritance chain below.
 
@@ -88,7 +88,7 @@ Every entry of a `wallpapers` list is expanded into its own member of the set: a
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Wallpaper Property | `wallpaper` | Frontmatter property name used to specify a single wallpaper |
-| Wallpapers Property | `wallpapers` | Frontmatter property name holding a list of wallpapers; one entry is picked at random on every note activation. Takes priority over *Wallpaper Property* |
+| Wallpapers Property | `wallpapers` | Frontmatter property name holding a list of wallpapers; one entry is picked at random when the note is activated, then held while you work in it. Takes priority over *Wallpaper Property* |
 | Wallpapers Directory | `/` | Vault folder containing wallpaper images |
 | Keep existing wallpaper | `true` | Retain the wallpaper when navigating to a note without one |
 | Inheritance Property | _(empty)_ | Specific frontmatter property whose outlinks are checked for wallpapers (priority 2) |
