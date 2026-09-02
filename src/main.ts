@@ -272,6 +272,12 @@ export default class DynamicWallpaperPlugin extends Plugin {
   settings: PluginSettings = DEFAULT_SETTINGS;
   private opacityNoticeTimeout: number | null = null;
   private currentWallpaper: TFile | null = null;
+  /**
+   * Path of the note the on-screen wallpaper was chosen for. While this
+   * stays the active note, edits to it don't re-roll the pick — see
+   * `updateWallpaper`.
+   */
+  private currentWallpaperNotePath: string | null = null;
   private wallpaperCache!: WallpaperCache;
   private syncDebounceTimer: number | null = null;
 
@@ -464,7 +470,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
       id: 'refresh-wallpaper',
       name: 'Refresh wallpaper',
       callback: () => {
-        this.updateWallpaper();
+        this.updateWallpaper({ reroll: true });
       },
     });
 
@@ -630,7 +636,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
       if (wallpapers.length > 0) {
         new WallpaperModal(this.app, wallpapers, (file) => {
-          this.currentWallpaper = file;
+          this.pinWallpaper(file);
           const wallpaperUrl = this.app.vault.getResourcePath(file);
           activeDocument.body.style.setProperty(
             '--background-image',
@@ -701,7 +707,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
       // Found a new candidate — apply it.
       if (resolved.file) {
-        this.currentWallpaper = resolved.file;
+        this.pinWallpaper(resolved.file);
         const wallpaperUrl = this.app.vault.getResourcePath(resolved.file);
         activeDocument.body.style.setProperty(
           '--background-image',
@@ -709,7 +715,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
         );
       } else {
         // Fallback: raw value didn't resolve to an attachment file.
-        this.currentWallpaper = null;
+        this.pinWallpaper(null);
         activeDocument.body.style.setProperty(
           '--background-image',
           `url("${resolved.rawValue.replace(/\[\[|\]\]/g, '')}")`
@@ -763,7 +769,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
           return;
         }
         // Same handler the picker uses: track the new current, apply it.
-        this.currentWallpaper = file;
+        this.pinWallpaper(file);
         const wallpaperUrl = this.app.vault.getResourcePath(file);
         activeDocument.body.style.setProperty(
           '--background-image',
@@ -820,7 +826,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
     if (!picked) return; // unreachable given the early-return above, but
                           // keeps the type-narrowing explicit.
 
-    this.currentWallpaper = picked;
+    this.pinWallpaper(picked);
     const wallpaperUrl = this.app.vault.getResourcePath(picked);
     activeDocument.body.style.setProperty(
       '--background-image',
@@ -1099,7 +1105,10 @@ export default class DynamicWallpaperPlugin extends Plugin {
   }
 
   /**
-   * Pick one wallpaper out of a candidate list, re-rolled on every call.
+   * Pick one wallpaper out of a candidate list, re-rolled on every call
+   * unless `stickyPath` is still among the entries — in that case the pick
+   * that's already on screen wins, so editing a note doesn't shuffle its
+   * wallpaper out from under the user.
    * Entries that don't resolve to a file are skipped rather than counted as
    * a failed pick, so a typo'd link can't blank the wallpaper 1-in-N times.
    * When nothing resolves the first raw value comes back as an unresolved
@@ -1108,9 +1117,17 @@ export default class DynamicWallpaperPlugin extends Plugin {
    */
   private pickWallpaper(
     values: string[],
-    sourcePath: string
+    sourcePath: string,
+    stickyPath: string | null = null
   ): WallpaperPick | null {
     if (values.length === 0) return null;
+
+    if (stickyPath) {
+      for (const rawValue of values) {
+        const file = this.resolveWallpaperValue(rawValue, sourcePath);
+        if (file?.path === stickyPath) return { file, rawValue };
+      }
+    }
 
     for (const rawValue of shuffle(values)) {
       const file = this.resolveWallpaperValue(rawValue, sourcePath);
@@ -1144,7 +1161,8 @@ export default class DynamicWallpaperPlugin extends Plugin {
   private findWallpaperFromLinks(
     links: { link: string }[],
     sourcePath: string,
-    fallback: { pick: WallpaperPick | null }
+    fallback: { pick: WallpaperPick | null },
+    stickyPath: string | null = null
   ): WallpaperPick | null {
     for (const entry of links) {
       const linkedFile = this.app.metadataCache.getFirstLinkpathDest(
@@ -1154,7 +1172,8 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
       const pick = this.pickWallpaper(
         this.readWallpaperValues(linkedFile),
-        linkedFile.path
+        linkedFile.path,
+        stickyPath
       );
       if (!pick) continue;
       if (pick.file) return pick;
@@ -1167,10 +1186,15 @@ export default class DynamicWallpaperPlugin extends Plugin {
    * Resolve a wallpaper for an arbitrary note using the full priority chain
    * (direct → inheritance property → frontmatter links → body links →
    * backlinks of `targetFile`). Notes offering a `wallpapers` list get one
-   * random entry per call, so every note activation re-rolls. Returns null
-   * when no tier offers anything at all.
+   * random entry per call, so every note activation re-rolls. Pass
+   * `stickyPath` to keep that wallpaper whenever the winning tier still
+   * offers it, instead of re-rolling. Returns null when no tier offers
+   * anything at all.
    */
-  private resolveWallpaperForFile(targetFile: TFile): WallpaperPick | null {
+  private resolveWallpaperForFile(
+    targetFile: TFile,
+    stickyPath: string | null = null
+  ): WallpaperPick | null {
     const metadata = this.app.metadataCache.getFileCache(targetFile);
     // Values that named a file we couldn't find. We keep the first one and
     // only fall back to it once every tier has come up empty, matching the
@@ -1179,7 +1203,8 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     const direct = this.pickWallpaper(
       this.readWallpaperValues(targetFile),
-      targetFile.path
+      targetFile.path,
+      stickyPath
     );
     if (direct?.file) return direct;
     if (direct) fallback.pick = direct;
@@ -1211,14 +1236,38 @@ export default class DynamicWallpaperPlugin extends Plugin {
     }
 
     for (const links of tiers) {
-      const pick = this.findWallpaperFromLinks(links, targetFile.path, fallback);
+      const pick = this.findWallpaperFromLinks(
+        links,
+        targetFile.path,
+        fallback,
+        stickyPath
+      );
       if (pick) return pick;
     }
 
     return fallback.pick;
   }
 
-  private updateWallpaper() {
+  /**
+   * Record a manually chosen wallpaper as the one on screen, keyed to the
+   * active note so subsequent edits to that note don't re-roll past it.
+   */
+  private pinWallpaper(file: TFile | null) {
+    this.currentWallpaper = file;
+    this.currentWallpaperNotePath =
+      this.app.workspace.getActiveFile()?.path ?? null;
+  }
+
+  /**
+   * Re-resolve and apply the wallpaper for the active note. By default the
+   * wallpaper already on screen is held onto whenever it's still a valid
+   * candidate for that same note, so typing in a note doesn't cycle its
+   * `wallpapers` pool on every keystroke. Switching notes re-rolls (the
+   * held pick is keyed to the note it was chosen for), and
+   * `{ reroll: true }` forces a fresh draw for the *Refresh wallpaper*
+   * command.
+   */
+  private updateWallpaper(options?: { reroll?: boolean }) {
     // Update overlay opacity CSS variables
     activeDocument.body.style.setProperty(
       '--background-overlay-opacity-light',
@@ -1232,7 +1281,13 @@ export default class DynamicWallpaperPlugin extends Plugin {
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) return;
 
-    const pick = this.resolveWallpaperForFile(activeFile);
+    const stickyPath =
+      options?.reroll || activeFile.path !== this.currentWallpaperNotePath
+        ? null
+        : this.currentWallpaper?.path ?? null;
+
+    const pick = this.resolveWallpaperForFile(activeFile, stickyPath);
+    this.currentWallpaperNotePath = activeFile.path;
 
     if (pick?.file) {
       this.currentWallpaper = pick.file;
