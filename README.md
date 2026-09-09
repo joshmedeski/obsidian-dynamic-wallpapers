@@ -6,7 +6,7 @@ Set per-note background wallpapers in Obsidian using frontmatter properties. Wal
 - 🎰 **Wallpaper pools:** Set a `wallpapers` list instead and the plugin picks one at random each time you open the note — the pick then holds steady while you work in it
 - 🔗 **Wallpaper inheritance:** Notes without a wallpaper can inherit from linked notes (via a specific frontmatter property, all frontmatter links, body links, or backlinks)
 - 🎨 **Wallpaper picker:** Browse and select wallpapers from a visual gallery with thumbnail previews
-- 🎲 **Random wallpaper:** Pick a random wallpaper from the active note's backlink pool, or from the full set of related wallpapers
+- 🎲 **Random wallpaper:** Pick a random wallpaper from every image in your Wallpapers Directory, or from the set of wallpapers related to the active note
 - 🗂️ **Related wallpapers modal:** See every wallpaper that could apply to the active note, grouped by which inheritance tier produced it
 - 🧹 **Thumbnail cache management:** Clear or rebuild the cached thumbnails that power the picker and related-wallpapers modal
 - 🌗 **Overlay opacity:** Adjust a color overlay per theme (light/dark) so text remains readable
@@ -23,7 +23,7 @@ Set per-note background wallpapers in Obsidian using frontmatter properties. Wal
 All commands are available from the Command Palette (`Cmd/Ctrl + P`).
 
 - **Choose Wallpaper:** Open a visual gallery of every image in the Wallpapers Directory and click a thumbnail to apply it.
-- **Pick Random Wallpaper:** Apply a random backlink's wallpaper (resolved through the full inheritance chain), skipping the one already on screen.
+- **Pick Random Wallpaper:** Apply a random image from the Wallpapers Directory, skipping the one already on screen.
 - **View Related Wallpapers:** Open a modal listing every wallpaper that could apply to the active note, grouped by inheritance tier.
 - **Pick Random Related Wallpaper:** Apply a random wallpaper from the related set only, skipping the one already on screen.
 - **Increase Overlay Opacity:** Raise the active theme's overlay opacity by 0.05.
@@ -81,7 +81,7 @@ The **related** set is the full collection of wallpapers reachable through every
 - **View Related Wallpapers** opens a modal listing every wallpaper in the set, grouped by the tier that produced it. Each card shows a thumbnail, the source note's name, and its tier. Click a card to apply that wallpaper; click the small `↗ source-name` link to open the source note in a new leaf instead. Tiers with no wallpapers are hidden.
 Every entry of a `wallpapers` list is expanded into its own member of the set: a note contributing three wallpapers shows three cards, and counts as three candidates in the random draw (so it carries three times the weight of a note offering one).
 
-- **Pick Random Related Wallpaper** applies a random wallpaper from this same set, skipping the one already on screen. Unlike *Pick Random Wallpaper* (which only considers backlinks), it never falls back outside the related set.
+- **Pick Random Related Wallpaper** applies a random wallpaper from this same set, skipping the one already on screen. Unlike *Pick Random Wallpaper* (which draws from the whole Wallpapers Directory), it never picks anything outside the related set.
 
 ## Settings
 
