@@ -665,68 +665,43 @@ export default class DynamicWallpaperPlugin extends Plugin {
   }
 
   async pickRandomWallpaper() {
-    // "Pick random wallpaper" picks a random *backlink note* of the active
-    // file and resolves that note's wallpaper through the same priority
-    // chain. We never reuse the wallpaper that's currently displayed, and if
-    // there is only one candidate we leave the current wallpaper untouched.
-    const activeFile = this.app.workspace.getActiveFile();
-    if (!activeFile) {
-      new Notice('No active note.');
+    // "Pick random wallpaper" draws from the whole Wallpapers Directory —
+    // every image in the configured folder is a candidate, regardless of
+    // what the active note links to. (For a draw restricted to the active
+    // note's inheritance chain, use "Pick random related wallpaper".) We
+    // never reuse the wallpaper that's already on screen; if it's the only
+    // image in the folder we leave the current selection alone.
+    const folder = this.getWallpapersFolder();
+    if (!folder) {
+      new Notice('Wallpaper directory not found.');
       return;
     }
 
-    // Force a fresh re-scan of backlinks for the active file so we don't
-    // rely on a stale resolvedLinks snapshot (e.g. when the user just edited
-    // a backlink and immediately runs this command). getBacklinksForFile
-    // walks the latest cached links every call rather than returning the
-    // precomputed resolvedLinks map.
-    const backlinkPaths = this.collectBacklinkPaths(activeFile);
+    const wallpapers = folder.children.filter(
+      (file): file is TFile => file instanceof TFile && isImageFile(file)
+    );
 
-    if (backlinkPaths.length === 0) {
-      new Notice('No backlinks found for this note.');
+    if (wallpapers.length === 0) {
+      new Notice('No images found in the specified wallpaper directory.');
       return;
     }
-
-    // Shuffle backlinks (Fisher–Yates) so we can short-circuit on the first
-    // candidate whose resolved wallpaper differs from the current one.
-    const shuffled = shuffle(backlinkPaths);
 
     const currentPath = this.currentWallpaper?.path ?? null;
-
-    for (const sourcePath of shuffled) {
-      const backlinkFile = this.app.vault.getAbstractFileByPath(sourcePath);
-      if (!(backlinkFile instanceof TFile)) continue;
-
-      const resolved = this.resolveWallpaperForFile(backlinkFile);
-      if (!resolved) continue;
-
-      // Skip if it points at the wallpaper that's already on screen.
-      if (resolved.file && currentPath && resolved.file.path === currentPath) {
-        continue;
-      }
-
-      // Found a new candidate — apply it.
-      if (resolved.file) {
-        this.pinWallpaper(resolved.file);
-        const wallpaperUrl = this.app.vault.getResourcePath(resolved.file);
-        activeDocument.body.style.setProperty(
-          '--background-image',
-          `url("${wallpaperUrl}")`
-        );
-      } else {
-        // Fallback: raw value didn't resolve to an attachment file.
-        this.pinWallpaper(null);
-        activeDocument.body.style.setProperty(
-          '--background-image',
-          `url("${resolved.rawValue.replace(/\[\[|\]\]/g, '')}")`
-        );
-      }
+    // Shuffle so every non-current image is equally likely, then take the
+    // first pick that isn't already displayed.
+    const picked = shuffle(wallpapers).find((f) => f.path !== currentPath);
+    if (!picked) {
+      new Notice('Current wallpaper is the only wallpaper available.');
       return;
     }
 
-    // Every backlink resolved to the wallpaper that's already displayed (or
-    // every backlink had no wallpaper at all and there was nothing to pick).
-    new Notice('No other wallpaper available from backlinks.');
+    this.pinWallpaper(picked);
+    const wallpaperUrl = this.app.vault.getResourcePath(picked);
+    activeDocument.body.style.setProperty(
+      '--background-image',
+      `url("${wallpaperUrl}")`
+    );
+    new Notice(`Picked: ${picked.name}`);
   }
 
   async viewRelatedWallpapers() {
