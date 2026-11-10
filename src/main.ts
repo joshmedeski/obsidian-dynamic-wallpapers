@@ -541,8 +541,12 @@ export default class DynamicWallpaperPlugin extends Plugin {
 
     // Listen for active file changes
     this.registerEvent(
-      this.app.workspace.on('active-leaf-change', () => {
-        this.updateWallpaper();
+      this.app.workspace.on('active-leaf-change', (leaf) => {
+        if (leaf?.view.getViewType() === 'empty') {
+          void this.pickRandomWallpaper({ quiet: true });
+        } else {
+          this.updateWallpaper();
+        }
       })
     );
 
@@ -664,7 +668,8 @@ export default class DynamicWallpaperPlugin extends Plugin {
     return folder instanceof TFolder ? folder : null;
   }
 
-  async pickRandomWallpaper() {
+  async pickRandomWallpaper({ quiet = false } = {}) {
+    const notify = (message: string) => quiet || new Notice(message);
     // "Pick random wallpaper" draws from the whole Wallpapers Directory —
     // every image in the configured folder is a candidate, regardless of
     // what the active note links to. (For a draw restricted to the active
@@ -673,7 +678,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
     // image in the folder we leave the current selection alone.
     const folder = this.getWallpapersFolder();
     if (!folder) {
-      new Notice('Wallpaper directory not found.');
+      notify('Wallpaper directory not found.');
       return;
     }
 
@@ -682,7 +687,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
     );
 
     if (wallpapers.length === 0) {
-      new Notice('No images found in the specified wallpaper directory.');
+      notify('No images found in the specified wallpaper directory.');
       return;
     }
 
@@ -691,7 +696,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
     // first pick that isn't already displayed.
     const picked = shuffle(wallpapers).find((f) => f.path !== currentPath);
     if (!picked) {
-      new Notice('Current wallpaper is the only wallpaper available.');
+      notify('Current wallpaper is the only wallpaper available.');
       return;
     }
 
@@ -701,7 +706,7 @@ export default class DynamicWallpaperPlugin extends Plugin {
       '--background-image',
       `url("${wallpaperUrl}")`
     );
-    new Notice(`Picked: ${picked.name}`);
+    notify(`Picked: ${picked.name}`);
   }
 
   async viewRelatedWallpapers() {
